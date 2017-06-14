@@ -4,7 +4,7 @@
 # Neo_Chen <chenkolei@gmail.com>
 #LICENSED UNDER GNU GPL v3
 
-dir="$1"
+dir="${1:-/var/log}"
 uptime=$(cut -d \  -f 1 /proc/uptime)
 idletime=$(cut -d \  -f 2 /proc/uptime)
 current="$(date +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
