@@ -1,6 +1,6 @@
 #!/bin/bash
-dir="${1:-.}"
+dir="${2:-.}"
 cd $dir
 git add --all
-git commit -m "${2:-`uuidgen`}"
+git commit -m "${1:-`uuidgen`}"
 git push -u origin master
