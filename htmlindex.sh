@@ -1,9 +1,9 @@
 #!/bin/bash
 # Static HTML File Index Generator
-# Licensed under WTFPL
+# Licensed under GNU GPLv3 or newer
 
 dir="$1"
-title="$2"
+title="${2:-$PWD}"
 oldpwd="$PWD"
 
 cat <<EOF
@@ -15,15 +15,18 @@ cat <<EOF
 		<title>${title}</title>
 	</head>
 	<body>
-		<h1>${title}</h>
+		<h1>${title}</h1>
+		<table>
+		<tr><th>Filename</th>	<th>Size</th><tr>
 EOF
 
 cd "${1:-.}"
 for i in * ; do
-	echo -e "\t\t<a href=\"$i\">$i</a>"
+	echo -e "\t\t<tr><td><a href=\"$i\">$i</a></td><td>`wc -c "$i" | cut -f 1 -d \ `</td></tr>"
 done
 
 cat <<EOF
+	</table>
 	</body>
 </html>
 EOF
