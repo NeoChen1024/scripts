@@ -11,7 +11,7 @@ for i in */ ;do
 	cd "$i"
 	echo -e "\e[1;34m>>\e[32m$i\e[1;34m<<\e[0m"
 	git pull
-	echo -e "\e[36m========\n"
+	echo -e "\e[36m========\e[0m\n"
 	cd ..
 done
 echo "Done!"
