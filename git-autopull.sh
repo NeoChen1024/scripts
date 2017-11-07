@@ -1,7 +1,7 @@
 #!/bin/bash
 # Git-Autopull script -- update all repositorys under a directory
 # Usage : git-autopull.sh [dir]
-set -ev
+set -e
 if [ -v $1 ]||[ $1 == "." ]; then
 	olddir="$PWD"
 	cd "$1"
