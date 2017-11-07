@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 TMPFILE="/tmp/sed-$UID.tmp"
-DIR="$HOME/www"
+DIR=${1:-$HOME/www}
 printf "\e[s"
 all=$(find "$DIR" -name \*.html | wc -l)
 declare -i count=0

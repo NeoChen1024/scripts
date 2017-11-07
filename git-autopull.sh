@@ -16,4 +16,4 @@ for i in */ ;do
 done
 echo "Done!"
 cd "$olddir"
-return 0
+exit 0
