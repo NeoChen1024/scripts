@@ -12,7 +12,7 @@ usage()
 
 # Get command line aruguments
 
-while getopts “hf:v” OPTION ; do
+while getopts "hf:v" OPTION ; do
 	case $OPTION in
 	h)
 		usage
