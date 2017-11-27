@@ -27,7 +27,7 @@
 # VERBOSE (int)		-v is set (more -v makes $VERBOSE bigger)
 # DIR (string)		-d is set or using default value
 
-set -xe
+set -e
 SCRIPT_NAME="mirror-sync"
 AURTHOR="Neo_Chen <chenkolei@gmail.com>"
 LICENSE="GPLv3 or Newer"
