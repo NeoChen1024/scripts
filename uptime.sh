@@ -11,7 +11,7 @@ current="$(date +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
 since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
 if [ -d "$dir"  ];then
 	echo -e "$since\t$current\t$uptime\t$idletime" >> "$dir"/uptimerec.lst
-	
+
 	{
 	echo -e "$since\t$current\t$uptime\t$idletime"
 	cat /proc/stat

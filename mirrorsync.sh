@@ -18,7 +18,6 @@
 # Document For Config File:
 # ==============================
 # The config file uses same syntax as shell script,
-# declare -i SERVER_MAX_INDEX="<number of your servers>"
 # declare -a SERVERS[]=("<names of your servers>")
 # SERVER_<name>_CMDLINE=""
 #
@@ -28,7 +27,7 @@
 # DIR (string)		-d is set or using default value
 
 set -e
-SCRIPT_NAME="mirror-sync"
+SCRIPT_NAME="mirrorsync"
 AURTHOR="Neo_Chen <chenkolei@gmail.com>"
 LICENSE="GPLv3 or Newer"
 
@@ -52,9 +51,11 @@ declare CONFIG="${HOME}/.mirrorsync"
 declare DIR="${HOME}/HTML/"
 declare -i COUNT=0
 
-# Get command line aruguments
+# Set $IFS for reading -o argument
+IFS='='
 
-while getopts "f:d:qvh" OPTION ; do
+# Get command line aruguments
+while getopts "f:d:o:qvh" OPTION ; do
 	case $OPTION in
 	h)	usage && exit 1 ;;
 	f)	CONFIG="$OPTARG" ;;
@@ -62,6 +63,8 @@ while getopts "f:d:qvh" OPTION ; do
 	d)	DIR="$OPTARG" ;;
 	q)	VERBOSE=0
 		QUIET=1 ;;
+	o)	echo "$OPTARG" | read -r name value
+		declare "$name"="$value";;
 	esac
 done
 
@@ -90,6 +93,10 @@ BMAGENTA="${ESC}[45m"	#Magenta
 BCYAN="${ESC}[46m"	#Cyan
 BWHITE="${ESC}[47m"	#White
 
+# Read the config file
+source "$CONFIG"
+
+# Normal Message
 msg_echo()
 {
 	if [ "$QUIET" -lt 1 ] ;then
@@ -97,10 +104,19 @@ msg_echo()
 	fi
 }
 
+# Debug Level Verbose
 verbose2_echo()
 {
 	if [ "$VERBOSE" -ge 2 ] ;then
 		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FGREEN}${1}${RESET}"
+	fi
+}
+
+# Verbose Message
+verbose_echo()
+{
+	if [ "$VERBOSE" -ge 1 ] ;then
+		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FCYAN}${1}${RESET}"
 	fi
 }
 
@@ -118,7 +134,7 @@ is_set()
 }
 
 expand_variables()
-{	
+{
 	verbose2_echo "expand_variables: $*"
 	declare -g exp_name
 	declare -g exp_cmdline
@@ -147,12 +163,10 @@ run_server()
 test -d "$DIR"
 test -f "$CONFIG"
 
-# Read the config
-source "$CONFIG"
-
-while [ "$SERVER_MAX_INDEX" -ge "$COUNT" ] ; do
+while [ "${#SERVERS[@]}" -ge "$COUNT" ] ; do
 	expand_variables "$COUNT"
 	msg_echo "#[${count}]\t\"${exp_name}\", with commandline \"$exp_cmdline\""
 	run_server "$exp_cmdline"
 	let ++COUNT
 done
+

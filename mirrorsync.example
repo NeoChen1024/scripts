@@ -2,11 +2,8 @@
 # mirror-sync Config File:
 # =========================
 # The config file uses same syntax as shell script.
-
-declare -i SERVER_MAX_INDEX
 declare -a SERVERS
 
-SERVER_MAX_INDEX=1
 SERVERS=("TV_BOX" "NOPE")
 
 if [ "$VERBOSE" -ge 1 ] ;then
