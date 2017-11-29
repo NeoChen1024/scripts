@@ -2,9 +2,9 @@
 # mirror-sync Config File:
 # =========================
 # The config file uses same syntax as shell script.
-declare -a SERVERS
+declare -a MIRRORSYNC_SERVERS
 
-SERVERS=("TV_BOX" "NOPE")
+MIRRORSYNC_SERVERS=("TV_BOX" "NOPE")
 
 if [ "$VERBOSE" -ge 1 ] ;then
 rsync_def="rsync --delete --progress -zzprve ssh"
@@ -12,5 +12,5 @@ else
 rsync_def="rsync --delete -zzpre ssh"
 fi
 
-SERVER_TV_BOX_CMDLINE="${rsync_def} \"${DIR}\/\" ${USER}\@192.168.0.66:www/"
-SERVER_NOPE_CMDLINE="${rsync_def} \"${DIR}\" ${USER}\@nope.org.tw:HTML/"
+MIRRORSYNC_SERVER_TV_BOX_CMDLINE="${rsync_def} \"${DIR}\/\" ${USER}\@192.168.0.66:www/"
+MIRRORSYNC_SERVER_NOPE_CMDLINE="${rsync_def} \"${DIR}\" ${USER}\@nope.org.tw:FTP/"

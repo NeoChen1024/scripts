@@ -1,5 +1,5 @@
 #!/bin/bash
-# mirror-sync: a script make you can sync much file mirrors easily
+# mirror-sync: a script make you sync file mirrors easily
 # Copyright (C) 2017 陳珂磊 (Neo_Chen)
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,8 +18,8 @@
 # Document For Config File:
 # ==============================
 # The config file uses same syntax as shell script,
-# declare -a SERVERS[]=("<names of your servers>")
-# SERVER_<name>_CMDLINE=""
+# declare -a MIRRORSYNC_SERVERS[]=("<names of your servers>")
+# MIRRORSYNC_SERVER_<name>_CMDLINE=""
 #
 # Available variables:
 # QUIET (int)		-q is set
@@ -47,7 +47,7 @@ usage()
 # Set default variables
 declare -i VERBOSE=0
 declare -i QUIET=0
-declare CONFIG="${HOME}/.mirrorsync"
+declare CONFIG="${HOME}/.neoscriptrc"
 declare DIR="${HOME}/HTML/"
 declare -i COUNT=0
 
@@ -141,15 +141,15 @@ expand_variables()
 	local VAR
 	count="$1"
 	verbose2_echo "$count"
-	exp_name="${SERVERS[${count}]}"
+	exp_name="${MIRRORSYNC_SERVERS[${count}]}"
 	verbose2_echo "exp_name=$exp_name"
-	VAR="SERVER_${exp_name}_CMDLINE"
+	VAR="MIRRORSYNC_SERVER_${exp_name}_CMDLINE"
 	verbose2_echo "VAR=$VAR"
 	exp_cmdline="${!VAR}"
 	verbose2_echo "exp_cmdline=$exp_cmdline"
 
-	is_set "\$SERVERS[${count}]" "$exp_name"
-	is_set "\$SERVER_${exp_name}_CMDLINE" "$exp_cmdline"
+	is_set "\$MIRRORSYNC_SERVERS[${count}]" "$exp_name"
+	is_set "\$MIRRORSYNC_SERVER_${exp_name}_CMDLINE" "$exp_cmdline"
 }
 
 run_server()
