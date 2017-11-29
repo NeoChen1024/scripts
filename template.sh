@@ -1,5 +1,8 @@
 #!/bin/bash
 # Bash Script Template
+[ -x "$HOME/.local/lib/neostdlib.sh" ] && source "$HOME/.local/lib/neostdlib.sh"
+[ -x "/usr/lib/neostdlib.sh" ] && source "/usr/lib/neostdlib.sh"
+
 SCRIPT_NAME="Template"
 AURTHOR="Name <email addr>"
 LICENSE="GPLv3 or Newer"

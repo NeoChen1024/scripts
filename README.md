@@ -8,6 +8,6 @@
 * gitautoupd:	自動的推送 Git commit 給 origin
 * mirrorsync:	用來方便檔案同步的事情
 * neostdlib:	我的標準函式庫
-* template.sh:	用來寫新腳本的 Standard Library
+* template.sh:	用來寫新腳本的範本
 * uptime.sh:	Uptime 記錄器（要寫出 one-shot 的 systemd service）
 
