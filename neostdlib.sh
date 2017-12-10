@@ -63,35 +63,35 @@ BWHITE="${ESC}[47m"	#White
 # Normal Message
 msg_echo()
 {
-# Argument::	$1
+# Argument::	$* [any test]
 	if [ "$QUIET" -lt 1 ] ;then
-		echo -e "${BBLUE}>>${RESET} ${FCYAN}${1}${RESET}"
+		echo -e "${BBLUE}>>${RESET} ${FCYAN}${*}${RESET}"
 	fi
 }
 
 # Debug Level Verbose
-verbose2_echo()
+debug_echo()
 {
-# Argument::	$1
+# Argument::	$* [any text]
 	if [ "$VERBOSE" -ge 2 ] ;then
-		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FGREEN}${1}${RESET}"
+		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FGREEN}${*}${RESET}"
 	fi
 }
 
 # Verbose Message
 verbose_echo()
 {
-# Argument::	$message
+# Argument::	$* [any text]
 	if [ "$VERBOSE" -ge 1 ] ;then
-		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FCYAN}${1}${RESET}"
+		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FCYAN}${*}${RESET}"
 	fi
 }
 
 # Check whether the variable is set or not
 is_set()
 {
-# Argument::	$name
-# Return Err::	When $value is not set or its length is zero
+# Argument::	$name [variable name]
+# Return Err::	When $name is not set or its length is zero
 	local name
 	local value
 	name="$1"
@@ -113,11 +113,11 @@ is_exist()
 	[ -f "$file" ] || return 2
 }
 
-# Expand variables from configuration
+# Expand variables from argument
 expand_variables()
 {
-# Argument :: 	$<prefix>, $<class>, $count
-# Return Var ::	$<prefix>_<class>_<name>
+# Argument :: 	$<prefix>, $<class>, $<name>, $var_name_to
+# Return Var ::	$<var_name_to>=$<prefix>_<class>_<name>
 	local var_class_name
 	local var_class_item
 	local prefix
@@ -126,14 +126,13 @@ expand_variables()
 
 	prefix="$1"
 	class="$2"
-	count="$3"
+	name="$3"
+	var_name="$4"
 
-	var_class_name="${prefix}_${class}"
-	var_class_item="${prefix}_${class}_${!var_class_name[$count]}"
-	declare "${prefix}_${class}_${!var_class_name[$count]}=${!var_class_item}"
+	var_class_name="${prefix}_${class}_${name}"
+	declare "${var_name}=${!var_class_item}"
 
 	is_set "$var_class_name" "${!var_class_name}"
-	is_set "$var_class_item" "${!var_class_item}"
 }
 
 random()
@@ -144,13 +143,14 @@ random()
 
 	source="$1"
 	length="$2"
-	
+
 	case "$source" in
 		random)	dd if=/dev/random of=/dev/stdout bs=1 count="$length" ;;
 		pseudo)	dd if=/dev/urandom of=/dev/stdout bs=1 count="$length" ;;
 	esac
 }
 
+# Convert binary stream to hexdecimal
 hexify()
 {
 # Argument :: $source (stdio|file)
@@ -165,4 +165,5 @@ hexify()
 		od -t x2 "$file"
 	fi
 }
+
 

@@ -63,10 +63,12 @@ while getopts "f:d:o:qvh" OPTION ; do
 	d)	DIR="$OPTARG" ;;
 	q)	VERBOSE=0
 		QUIET=1 ;;
-	o)	echo "$OPTARG" | read -r name value
+	o)	read -r name value <<<"$OPTARG"
 		declare "$name"="$value";;
 	esac
 done
+
+IFS=$'\n'
 
 # ===============Colors=============== #
 ESC="\033"
