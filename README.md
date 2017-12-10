@@ -10,4 +10,4 @@
 * neostdlib:	我的標準函式庫
 * template.sh:	用來寫新腳本的範本
 * uptime.sh:	Uptime 記錄器（要寫出 one-shot 的 systemd service）
-
+* coredumper.sh	Coredump 壓縮器（取代 systemd-coredump，因為對於壓縮演算法的選用很重要）
