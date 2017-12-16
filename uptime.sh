@@ -10,12 +10,12 @@ idletime=$(cut -d ' ' -f 2 /proc/uptime)
 current="$(date +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
 since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
 if [ -d "$dir"  ];then
-	echo -e "$since\t$current\t$uptime\t$idletime" >> "$dir"/uptimerec.lst
+	printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime" >> "$dir"/uptimerec.lst
 
 	{
-	echo -e "$since\t$current\t$uptime\t$idletime"
+	printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime"
 	cat /proc/stat
-	echo -e "\n%%%%----%%%%\n"
+	printf '\n%%%%----%%%%\n'
 	} >> "$dir"/stat.lst
 
 else
