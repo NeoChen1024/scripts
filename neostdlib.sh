@@ -31,7 +31,7 @@ declare CONFIG="${HOME}/.neoscriptrc"
 	# =============== Colors =============== #
 	##########################################
 
-ESC="\033"
+ESC='\\033'
 RESET="${ESC}[0m"	#Reset all attributes
 BRIGHT="${ESC}[1m"	#Bright
 DIM="${ESC}[2m"	#Dim
@@ -60,10 +60,18 @@ BWHITE="${ESC}[47m"	#White
 	# Make your life easier #
 	#########################
 
+# Error Message that stops the script
+error_echo()
+{
+# Arguent::	$* [any text]
+	echo -e "${BRED}>>${RESET} ${FMAGENTA}${*}${RESET}"
+	return 1
+}
+
 # Normal Message
 msg_echo()
 {
-# Argument::	$* [any test]
+# Argument::	$* [any text]
 	if [ "$QUIET" -lt 1 ] ;then
 		echo -e "${BBLUE}>>${RESET} ${FCYAN}${*}${RESET}"
 	fi
@@ -93,12 +101,11 @@ is_set()
 # Argument::	$name [variable name]
 # Return Err::	When $name is not set or its length is zero
 	local name
-	local value
 	name="$1"
-
+	
 	if [ -z "${!name}" ] ;then
-	msg_echo "${name} is not set"
-	return 2
+		msg_echo "${name} is not set"
+		return 2
 	fi
 }
 
@@ -122,7 +129,6 @@ expand_variables()
 	local var_class_item
 	local prefix
 	local class
-	local count
 
 	prefix="$1"
 	class="$2"
@@ -145,8 +151,8 @@ random()
 	length="$2"
 
 	case "$source" in
-		random)	dd if=/dev/random of=/dev/stdout bs=1 count="$length" ;;
-		pseudo)	dd if=/dev/urandom of=/dev/stdout bs=1 count="$length" ;;
+		random)	dd if=/dev/random bs=1 count="$length" ;;
+		pseudo)	dd if=/dev/urandom bs=1 count="$length" ;;
 	esac
 }
 
@@ -166,4 +172,70 @@ hexify()
 	fi
 }
 
+# Fetch URL
+fetch_url()
+{
+# Argument :: $flags $url $directory_or_filename
+# ---[Flags]----------------------------------------
+#		<flag> -- <description>
+#		n -- nothing, be normal
+#		o -- do overwrite
+#		- -- to stdout
+#		t -- download to temporary directory
+# --------------------------------------------------
+# URL scheme can be : https, http, ftp, tftp, raw 
+	local flag
+	local url
+	local fd
+	local filename
+	flag="$1"
+	url="$2"
+	fd="$3"
+
+	case "$flag" in
+		*o*) local flag_o=1 ;;
+		*-*) local flag_dash=1 ;;
+		*t*) local flag_t=1 ;;
+		*n*) true ;;
+		*) error_echo "Invaild Flags in \"${flag}\"" ;;
+	esac
+
+	[ -z "$url" ] && error_echo "URL is not set"
+	[ -z "$flag" ]
+	# Get the real filename
+	if [ -z "$fd" ] ; then
+		filename="${url##*/}"
+	fi
+
+	# Make sure we can handle directory
+	if [ -n "$fd" ]&&[ -d "$fd" ]||[ "$flag_t" ] ; then
+		filename="${fd:-/tmp}/${filename}"
+	fi
+
+	if [ -n "$fd" ]&&[ ! -e "$fd" ] ; then
+		filename="$fd"
+	fi
+	
+	[ -d "$fd" ] && 
+
+	if [ "$flag_dash" ] ; then
+		{
+			case "$url" in
+				"https://"*|"http://"*|"ftp://"*|"tftp://"*) curl "$url" ;;
+				"raw://"*) {
+					url="${url#'raw://'}"
+					nc "${url%:*}" "${url##*':'}"
+					} ;;
+				*) error_echo "Invaild URL Scheme"		
+			esac 
+		} | \
+		{ if [ "$flag_dash" ] ; then
+			cat
+		elif [ ! "$flag_o" ]&&[ -e "$filename" ] ; then
+			error_echo "File exists!"
+		else
+			> "$filename"
+		fi }
+	fi
+}
 
