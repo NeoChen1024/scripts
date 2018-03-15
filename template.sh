@@ -1,6 +1,7 @@
 #!/bin/bash
 # Bash Script Template
 
+# %DYN_LOAD%
 # Search for "neostdlib.sh" (Neo_Chen's Bash Standard Library)
 for i in "/usr/lib" "/usr/local/lib" "/lib" "$HOME/lib" "$HOME/.local/lib"
 do
@@ -9,6 +10,7 @@ do
 		break
 	fi
 done
+# %END_DYN_LOAD%
 
 SCRIPT_NAME="Template"
 AURTHOR="Name <email addr>"

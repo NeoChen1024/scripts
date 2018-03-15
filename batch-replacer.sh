@@ -16,7 +16,7 @@ LICENSE="GPLv3 or Newer"
 usage()
 {
 echo \
-"Usage: $SCRIPT_NAME [-v] [-r <string>] [-a <string>] [-h]
+"Usage: $SCRIPT_NAME [-v] [-r <string>] [-a <string>] [-h] files...
 	-v		Be verbose, one more -v gives more details
 	-r <string1>	Set replace target to <string1>
 	-t <string2>	Replace <string1> with <string2>
@@ -41,10 +41,8 @@ done
 for i in "$@" ; do
 	((++count))
 	printf '[%s/%s]\e[1;34m>>\e[32m%s\e[1;34m<<\e[0m' "$count" "$all" "$i"
-	if grep "$REPLACE" "$i" > /dev/null 2>&1 ; then
 		sed -i "s|${REPLACE}|${TO}|" "$i"
 		printf '\n\t'
 		printf '\e[2K\e[u'
-	fi
 done
 exit 0

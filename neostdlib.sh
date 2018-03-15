@@ -63,6 +63,7 @@ BWHITE="${ESC}[47m"	#White
 # Error Message that stops the script
 error_echo()
 {
+# External Requirement: coreutils
 # Arguent::	$* [any text]
 	echo -e "${BRED}>>${RESET} ${FMAGENTA}${*}${RESET}"
 	return 1
@@ -71,6 +72,7 @@ error_echo()
 # Normal Message
 msg_echo()
 {
+# External Requirement: coreutils
 # Argument::	$* [any text]
 	if [ "$QUIET" -lt 1 ] ;then
 		echo -e "${BBLUE}>>${RESET} ${FCYAN}${*}${RESET}"
@@ -80,6 +82,7 @@ msg_echo()
 # Debug Level Verbose
 debug_echo()
 {
+# External Requirement: coreutils
 # Argument::	$* [any text]
 	if [ "$VERBOSE" -ge 2 ] ;then
 		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FGREEN}${*}${RESET}"
@@ -89,6 +92,7 @@ debug_echo()
 # Verbose Message
 verbose_echo()
 {
+# External Requirement: coreutils
 # Argument::	$* [any text]
 	if [ "$VERBOSE" -ge 1 ] ;then
 		echo -e "${BRIGHT}${BBLUE}>>${RESET} ${BRIGHT}${FCYAN}${*}${RESET}"
@@ -141,8 +145,10 @@ expand_variables()
 	is_set "$var_class_name" "${!var_class_name}"
 }
 
+# Generate random bytes
 random()
 {
+# External Requirement: coreutils
 # Argument :: $source (random|pseudo), $length [bytes]
 	local source
 	local length
@@ -159,6 +165,7 @@ random()
 # Convert binary stream to hexdecimal
 hexify()
 {
+# External Requirement: coreutils
 # Argument :: $source (stdio|file)
 	local source
 	local file
@@ -175,6 +182,7 @@ hexify()
 # Fetch URL
 fetch_url()
 {
+# External Requirement: curl, netcat
 # Argument :: $flags $url $directory_or_filename
 # ---[Flags]----------------------------------------
 #		<flag> -- <description>
