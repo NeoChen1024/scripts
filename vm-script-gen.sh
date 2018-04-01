@@ -18,7 +18,6 @@ Usage: $SCRIPT_NAME [-ah] [-n Name] [-c cputype] [-m mem] [-d file] [-s num] [-b
 	-s	Number of CPUs
 	-b	Bridge Interface to use (If not specified, we use user network)
 	-e	Enable EFI, and specify where the ROM is
-	-o	Output to file
 	-q	QEMU
 	-a	Enable Audio
 EOF
@@ -26,7 +25,7 @@ EOF
 
 # Get command line aruguments
 
-while getopts "hn:c:m:d:s:b:r:e:o:q:av" OPTION ; do
+while getopts "hn:c:m:d:s:b:r:e:q:av" OPTION ; do
 	case $OPTION in
 	h)	usage
 		exit 1;;
@@ -50,6 +49,8 @@ while getopts "hn:c:m:d:s:b:r:e:o:q:av" OPTION ; do
 	q)	flag="${flag}q"
 		QEMU="$OPTARG";;
 	a)	flag="${flag}a";;
+	*)	echo "${SCRIPT_NAME}: Invaild argument: ${OPTARG}"
+		exit 8;;
 	esac
 done
 
