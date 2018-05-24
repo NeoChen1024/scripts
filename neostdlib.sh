@@ -179,7 +179,7 @@ hexify()
 	fi
 }
 
-# Fetch URL
+# Fetch URL -- Non-tested
 fetch_url()
 {
 # External Requirement: curl, netcat
@@ -205,7 +205,6 @@ fetch_url()
 		*-*) local flag_dash=1 ;;
 		*t*) local flag_t=1 ;;
 		*n*) true ;;
-		*) error_echo "Invaild Flags in \"${flag}\"" ;;
 	esac
 
 	[ -z "$url" ] && error_echo "URL is not set"
@@ -242,7 +241,7 @@ fetch_url()
 		elif [ ! "$flag_o" ]&&[ -e "$filename" ] ; then
 			error_echo "File exists!"
 		else
-			> "$filename"
+			cat > "$filename"
 		fi }
 	fi
 }

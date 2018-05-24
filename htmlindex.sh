@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env sh
 # Static HTML File Index Generator
 # Licensed under GNU GPLv3 or newer
 set -e
-title="${2:-$PWD}"
 
 cat <<EOF
 <!DOCTYPE html>
@@ -10,10 +9,10 @@ cat <<EOF
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<title>${title}</title>
+		<title>INDEX</title>
 	</head>
 	<body>
-		<h1>${title}</h1>
+		<h1>INDEX</h1>
 		<table>
 		<tr><th>Filename</th>	<th>Size</th><tr>
 EOF

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 SCRIPT_NAME="vm-script-gen"
 AURTHOR="Neo_Chen <chenkolei@gmail.com>"

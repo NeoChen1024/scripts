@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Uptime Recorder v0.9
 # 2017/04/29
 # Neo_Chen <chenkolei@gmail.com>
-#LICENSED UNDER GNU GPL v3
+# Released to Public Domain
 
 dir="${1:-/var/log}"
 uptime=$(cut -d ' ' -f 1 /proc/uptime)
@@ -28,5 +28,3 @@ if [ -e "$dir"/totaluptime.rec ];then
 else
 	echo "$uptime" > "$dir"/totaluptime.rec
 fi
-
-

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Coredumper For Linux
 # NeoLinuxWorkstation Coredump Handler
 
@@ -60,4 +60,4 @@ gzip -c > /var/coredump/"${file}"
 # If your host have zstd, set the correct suffix:
 ## file="${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.zst"
 # And, use this isntead:
-## zstd -6c -T0 > -c > "${coredump_path}"/"${file}"
+## zstd -19c -T0 -c > /var/coredump/"${file}"
