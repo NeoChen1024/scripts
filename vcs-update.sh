@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # VCS Auto Update script -- update all repositorys under a directory
-# Usage : vcs-update.sh [dir]
+# Usage : vcs-autoupd.sh [dir]
 
 RETURN=0
 
@@ -19,7 +19,7 @@ for dir in */ ;do
 	elif [ -d CVS/ ];then
 		cvs up -Pd
 	fi
-	[ "${?}" != 0 ]&& : $((RETURN++))
+	[ "${?}" != 0 ]&& RETURN=$((RETURN + 1))
 
 	printf '\033[36m========\033[0m\n'
 	)
