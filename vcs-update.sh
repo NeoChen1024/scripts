@@ -14,6 +14,8 @@ for dir in */ ;do
 	printf '\033[1;34m>>\033[32m%s\033[1;34m<<\033[0m\n' "${dir%/}"
 	if [ -d .git/ ];then
 		git pull
+	elif [ -d .hg/ ];then
+		hg up
 	elif [ -d .svn/ ];then
 		svn up
 	elif [ -d CVS/ ];then
