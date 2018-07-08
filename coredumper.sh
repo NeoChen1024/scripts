@@ -61,3 +61,4 @@ gzip -c > /var/coredump/"${file}"
 ## file="${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.zst"
 # And, use this isntead:
 ## zstd -19c -T0 -c > /var/coredump/"${file}"
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8

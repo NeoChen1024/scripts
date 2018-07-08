@@ -40,3 +40,4 @@ while getopts "hf:v" OPTION ; do
 done
 
 echo "This script does nothing."
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8

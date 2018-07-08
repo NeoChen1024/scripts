@@ -30,3 +30,4 @@ done
 [ "${RETURN}" != 0 ] && echo "Something failed..." || echo "Done!"
 
 exit "${RETURN}"
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8

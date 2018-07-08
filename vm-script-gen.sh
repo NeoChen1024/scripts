@@ -73,3 +73,4 @@ fi
 [[ "$flag" == *a* ]] && echo "-soundhw hda \\"
 echo '"$@"'
 
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8

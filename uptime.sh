@@ -28,3 +28,4 @@ if [ -e "$dir"/totaluptime.rec ];then
 else
 	echo "$uptime" > "$dir"/totaluptime.rec
 fi
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8

@@ -159,3 +159,4 @@ while [ "$(( ${#SERVERS[@]} - 1 ))" -ge "$COUNT" ] ; do
 	(( ++COUNT ))
 done
 
+# vim: set tabstop=8:softtabstop=8:shiftwidth=8
