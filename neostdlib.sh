@@ -31,7 +31,7 @@ declare CONFIG="${HOME}/.neoscriptrc"
 	# =============== Colors =============== #
 	##########################################
 
-ESC='\\033'
+ESC='\033'
 RESET="${ESC}[0m"	#Reset all attributes
 BRIGHT="${ESC}[1m"	#Bright
 DIM="${ESC}[2m"	#Dim
@@ -176,73 +176,6 @@ hexify()
 		od -t x2
 	elif [ "$source" == "file" ]&&[ -f "$file" ] ;then
 		od -t x2 "$file"
-	fi
-}
-
-# Fetch URL -- Non-tested
-fetch_url()
-{
-# External Requirement: curl, netcat
-# Argument :: $flags $url $directory_or_filename
-# ---[Flags]----------------------------------------
-#		<flag> -- <description>
-#		n -- nothing, be normal
-#		o -- do overwrite
-#		- -- to stdout
-#		t -- download to temporary directory
-# --------------------------------------------------
-# URL scheme can be : https, http, ftp, tftp, raw 
-	local flag
-	local url
-	local fd
-	local filename
-	flag="$1"
-	url="$2"
-	fd="$3"
-
-	case "$flag" in
-		*o*) local flag_o=1 ;;
-		*-*) local flag_dash=1 ;;
-		*t*) local flag_t=1 ;;
-		*n*) true ;;
-	esac
-
-	[ -z "$url" ] && error_echo "URL is not set"
-	[ -z "$flag" ]
-	# Get the real filename
-	if [ -z "$fd" ] ; then
-		filename="${url##*/}"
-	fi
-
-	# Make sure we can handle directory
-	if [ -n "$fd" ]&&[ -d "$fd" ]||[ "$flag_t" ] ; then
-		filename="${fd:-/tmp}/${filename}"
-	fi
-
-	if [ -n "$fd" ]&&[ ! -e "$fd" ] ; then
-		filename="$fd"
-	fi
-	
-	[ -d "$fd" ] && 
-
-	if [ "$flag_dash" ] ; then
-		{
-			case "$url" in
-				"https://"*|"http://"*|"ftp://"*|"tftp://"*) curl "$url" ;;
-				"raw://"*) {
-					url="${url#'raw://'}"
-					nc "${url%:*}" "${url##*':'}"
-					} ;;
-				*) error_echo "Invaild URL Scheme"		
-			esac 
-		} | \
-		{ if [ "$flag_dash" ] ; then
-			cat
-		elif [ ! "$flag_o" ]&&[ -e "$filename" ] ; then
-			error_echo "File exists!"
-		else
-			cat > "$filename"
-		fi }
 	fi
 }
 
