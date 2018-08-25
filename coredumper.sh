@@ -48,10 +48,10 @@ epoch="$6"
 path="$7"
 
 file="${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.gz"
-mesg="PATH=${path//'!'/"/"}; PID=${pid}; ID=${uid}:${gid}; SIG=${signal}"
+mesg="PATH=${path//'!'/"/"}, PID=${pid}, ID=${uid}:${gid}, SIG=${signal}"
 
 # Echo the message into Kernel Message Buffer
-echo "coredumpe: [${mesg}]" > /dev/kmsg
+echo "coredump: [${mesg}]" > /dev/kmsg
 
 # Compress the coredump with gzip
 # because all *NIX Systems have it
