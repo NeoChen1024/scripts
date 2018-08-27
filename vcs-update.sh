@@ -20,7 +20,10 @@ for dir in */ ;do
 		svn up
 	elif [ -d CVS/ ];then
 		cvs up -Pd
+	elif [ -d .bzr ];then
+		bzr pull
 	fi
+
 	[ "${?}" != 0 ]&& RETURN=$((RETURN + 1))
 
 	printf '\033[36m========\033[0m\n'
@@ -30,4 +33,3 @@ done
 [ "${RETURN}" != 0 ] && echo "Something failed..." || echo "Done!"
 
 exit "${RETURN}"
-# vim: set tabstop=8:softtabstop=8:shiftwidth=8
