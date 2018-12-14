@@ -149,10 +149,9 @@ run_server()
 }
 
 # Check files are exist
-test -d "$DIR"
 test -f "$CONFIG"
 
-while [ "$(( ${#SERVERS[@]} - 1 ))" -ge "$COUNT" ] ; do
+while [ "$(( ${#MIRRORSYNC_SERVERS[@]} - 1 ))" -ge "$COUNT" ] ; do
 	expand_variables "$COUNT"
 	msg_echo "#[${count}]\t\"${exp_name}\", with commandline \"$exp_cmdline\""
 	run_server "$exp_cmdline"
