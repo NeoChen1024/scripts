@@ -25,7 +25,7 @@ EOF
 
 # Get command line aruguments
 
-while getopts "hn:c:m:d:s:b:r:e:q:av" OPTION ; do
+while getopts "hn:c:m:d:s:b:r:e:q:v:a" OPTION ; do
 	case $OPTION in
 	h)	usage
 		exit 1;;
