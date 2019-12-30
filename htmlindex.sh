@@ -3,7 +3,9 @@
 # Licensed under GNU GPLv3 or newer
 set -e
 
-cat <<EOF
+dir="${1:-.}"
+
+cat > "$dir/index.html" <<EOF
 <!DOCTYPE html>
 <html>
 	<head>
@@ -17,11 +19,11 @@ cat <<EOF
 		<tr><th>Filename</th>	<th>Size</th><tr>
 EOF
 
-cd "${1:-.}"
+cd "$dir"
 
 {
 for i in * ; do
-	printf '\t\t<tr><td><a href=\"%s\">%s</a></td><td>%s</td></tr>' "$i" "$i" "$(du -hs -- "$i" | cut -f 1 -d ' ')"
+	printf '\t\t<tr><td><a href=\"%s\">%s</a></td><td>%s</td></tr>' "$i" "$i" "$(du -h -- "$i" | cut -f 1 -d ' ')"
 done
 
 
@@ -31,5 +33,5 @@ cat <<EOF
 </html>
 EOF
 
-} > "index.html"
+} >> "$dir/index.html"
 # vim: set tabstop=8:softtabstop=8:shiftwidth=8
