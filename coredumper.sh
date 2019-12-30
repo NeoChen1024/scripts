@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Coredumper For Linux
-# NeoLinuxWorkstation Coredump Handler
 
 # This is free and unencumbered software released into the public domain.
 #
@@ -47,18 +45,12 @@ signal="$5"
 epoch="$6"
 path="$7"
 
-file="${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.gz"
-mesg="PATH=${path//'!'/"/"}, PID=${pid}, ID=${uid}:${gid}, SIG=${signal}"
-
 # Echo the message into Kernel Message Buffer
-echo "coredump: [${mesg}]" > /dev/kmsg
+echo "coredump: [PATH=${path//'!'/"/"}, PID=${pid}, ID=${uid}:${gid}, SIG=${signal}]" > /dev/kmsg
 
 # Compress the coredump with gzip
 # because all *NIX Systems have it
-gzip -c > /var/coredump/"${file}"
+gzip -c > /var/coredump/"${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.gz"
+## zstd -19c -T0 -c > /var/coredump/"${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.zst"
 
-# If your host have zstd, set the correct suffix:
-## file="${name}:${pid}:${uid}:${gid}:${signal}:${epoch}.coredump.zst"
-# And, use this isntead:
-## zstd -19c -T0 -c > /var/coredump/"${file}"
 # vim: set tabstop=8:softtabstop=8:shiftwidth=8
