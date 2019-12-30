@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# Uptime Recorder v0.9
-# 2017/04/29
+# Uptime Recorder v1.0a
 # Neo_Chen <chenkolei@gmail.com>
 # Released to Public Domain
 
 dir="${1:-/var/log}"
 uptime=$(cut -d ' ' -f 1 /proc/uptime)
 idletime=$(cut -d ' ' -f 2 /proc/uptime)
-current="$(date +'%Y/%m/%dT%H%M%S%z')"
-since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +'%Y/%m/%dT%H%M%S%z')"
+strftime="%Y%m%dT%H%M%S%z"
+current="$(date +$strftime)"
+since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +$strftime)"
+
 if [ -d "$dir"  ];then
 	printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime" >> "$dir"/uptimerec.lst
 
 	{
-	printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime"
-	cat /proc/stat
-	printf '\n%%%%----%%%%\n'
+		printf 'Since:\t\t\tCurrent:\t\t\tUptime:\t\tIdletime:\n'	
+		printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime"
+		cat /proc/stat
+		printf '================\n'
 	} >> "$dir"/stat.lst
 
 else
