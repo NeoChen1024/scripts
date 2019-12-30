@@ -1,8 +1,14 @@
 #!/usr/bin/env sh
 # VCS Auto Update script -- update all repositorys under a directory
 # Usage : vcs-autoupd.sh [dir]
+set -e
 
 RETURN=0
+
+incret()
+{
+	RETURN=$((RETURN + 1))
+}
 
 if [ -n "${1}" ]; then
 	cd "${1}"
@@ -13,18 +19,16 @@ for dir in */ ;do
 	cd "${dir}"
 	printf '\033[1;34m>>\033[32m%s\033[1;34m<<\033[0m\n' "${dir%/}"
 	if [ -d .git/ ];then
-		git pull
+		git pull || incret
 	elif [ -d .hg/ ];then
-		hg up
+		hg up || incret
 	elif [ -d .svn/ ];then
-		svn up
+		svn up || incret
 	elif [ -d CVS/ ];then
-		cvs up -Pd
+		cvs up -Pd || incret
 	elif [ -d .bzr ];then
-		bzr pull
+		bzr pull || incret
 	fi
-
-	[ "${?}" != 0 ]&& RETURN=$((RETURN + 1))
 
 	printf '\033[36m========\033[0m\n'
 	)
