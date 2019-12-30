@@ -7,8 +7,8 @@
 dir="${1:-/var/log}"
 uptime=$(cut -d ' ' -f 1 /proc/uptime)
 idletime=$(cut -d ' ' -f 2 /proc/uptime)
-current="$(date +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
-since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +'AD %Y/%m/%d [%^a] %H:%M:%S(%s)')"
+current="$(date +'%Y/%m/%dT%H%M%S%z')"
+since="$(date -d @$(sed -n '/^btime /s///p' /proc/stat) +'%Y/%m/%dT%H%M%S%z')"
 if [ -d "$dir"  ];then
 	printf '%s\t%s\t%s\t%s\n' "$since" "$current" "$uptime" "$idletime" >> "$dir"/uptimerec.lst
 
@@ -24,7 +24,7 @@ fi
 
 if [ -e "$dir"/totaluptime.rec ];then
 	last=$(cat "$dir"/totaluptime.rec)
-	echo "scale=3;${last}+${uptime}" | bc -l > "$dir"/totaluptime.rec
+	echo "scale=10;${last}+${uptime}" | bc -l > "$dir"/totaluptime.rec
 else
 	echo "$uptime" > "$dir"/totaluptime.rec
 fi
