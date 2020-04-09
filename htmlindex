@@ -4,6 +4,7 @@
 set -e
 
 dir="${1:-.}"
+title="${2:-INDEX}"
 
 cat > "$dir/index.html" <<EOF
 <!DOCTYPE html>
@@ -11,10 +12,10 @@ cat > "$dir/index.html" <<EOF
 	<head>
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<title>INDEX</title>
+		<title>${title}</title>
 	</head>
 	<body>
-		<h1>INDEX</h1>
+		<h1>${title}</h1>
 		<table>
 		<tr><th>Filename</th>	<th>Size</th><tr>
 EOF
@@ -23,7 +24,7 @@ cd "$dir"
 
 {
 for i in * ; do
-	printf '\t\t<tr><td><a href=\"%s\">%s</a></td><td>%s</td></tr>' "$i" "$i" "$(du -h -- "$i" | cut -f 1 -d ' ')"
+	printf '\t\t<tr><td><a href=\"%s\">%s</a></td><td>%s</td></tr>' "$i" "$i" "$(du -h -- "$i" | cut -f 1 -d $'\t')"
 done
 
 
