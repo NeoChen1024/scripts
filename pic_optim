@@ -7,6 +7,7 @@ for file in "$@"; do
 		else
 			convert -quality 90 "$file" "${file}.jpg"
 			jpegoptim -v "${file}.jpg"
+			rm -v "$file"
 		fi
 	elif [[ "$file" = *.jpg ]] || [[ "$file" = *.jpeg ]]; then
 		jpegoptim -v "${file}"
