@@ -1,0 +1,14 @@
+#!/usr/bin/env zsh
+
+for file in "$@"; do
+	if [[ "$file" = *.png ]]; then
+		if [ "$(identify -format '%[type]' "$file")" = 'TrueColorAlpha' ] ; then
+			optipng -v -o7 "$file"
+		else
+			convert -quality 90 "$file" "${file}.jpg"
+			jpegoptim -v "${file}.jpg"
+		fi
+	elif [[ "$file" = *.jpg ]] || [[ "$file" = *.jpeg ]]; then
+		jpegoptim -v "${file}"
+	fi
+done
