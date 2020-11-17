@@ -7,7 +7,7 @@ RETURN=0
 
 incret()
 {
-	RETURN=$((RETURN + 1))
+	RETURN=$(( $RETURN + 1))
 }
 
 if [ -n "${1}" ]; then
@@ -25,7 +25,7 @@ for dir in */ ;do
 	elif [ -d .svn/ ];then
 		svn up || incret
 	elif [ -d CVS/ ];then
-		cvs up -Pd || incret
+		cvs -qz 6 up -A -Pd || incret
 	elif [ -d .bzr ];then
 		bzr pull || incret
 	fi
