@@ -1,11 +1,17 @@
 #!/usr/bin/env zsh
 
+msg_echo()
+{
+	echo -e "\e[44m>>\e[0m \e[32m${@}\e[0m"
+}
+
 for file in "$@"; do
+	msg_echo "$file"
 	if [[ "$file" = *.png ]]; then
 		if [ "$(identify -format '%[type]' "$file")" = 'TrueColorAlpha' ] ; then
 			optipng -v -o7 "$file"
 		else
-			convert -quality 90 "$file" "${file}.jpg"
+			convert -quality 100 "$file" "${file}.jpg"
 			jpegoptim -v "${file}.jpg"
 			rm -v "$file"
 		fi
