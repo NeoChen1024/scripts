@@ -2,15 +2,26 @@
 
 # This script requires ImageMagick
 
-compare="$1"
-shift 1
+por="$1"
+square="$2"
+land="$3"
+
+shift 3
 
 for i in "$@"; do
 	res=`identify -format "%w.%h" "$i"`
 	width="${res%.*}"
 	height="${res#*.}"
 
-	if [ "$width" "$compare" "$height" ]; then
-		echo "$i"
+	echo ">> $i"
+
+	if [ "$width" -lt "$height" ]; then
+		mv "$i" "$por"
+	elif [ "$width" -eq "$height" ]; then
+		mv "$i" "$square"
+	elif [ "$width" -gt "$height" ]; then
+		mv "$i" "$land"
+	else
+		echo ">>>>>>>>> I suppose there's some kind of error here!! <<<<<<<<<<<"
 	fi
 done
