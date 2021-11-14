@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -ex
+
+PIXIV_ID="`xclip -selection clipboard -o`"
+PIXIV_ID="${PIXIV_ID##*/}"
+
+echo "$PIXIV_ID"
+
+if ls ~/pic/*/"$PIXIV_ID"* ; then
+	echo 'exist'
+else
+	echo 'non'
+fi
