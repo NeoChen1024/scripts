@@ -5,17 +5,17 @@ msg_echo()
 	echo -e "\e[44m>>\e[0m \e[32m${@}\e[0m"
 }
 
-for file in "$@"; do
-	msg_echo "$file"
-	if [[ "$file" = *.png ]]; then
-		if [[ "$(identify -format '%[type]' "$file")" = *Alpha [] ; then
-			optipng -v -o7 "$file"
-		else
-			convert -quality 100 "$file" "${file}.jpg" && \
-			jpegoptim -v "${file}.jpg" && \
-			rm -f "$file"
-		fi
-	elif [[ "$file" = *.jpg ]] || [[ "$file" = *.jpeg ]]; then
-		jpegoptim -v "${file}"
+file="$1"
+
+msg_echo "$file"
+if [[ "$file" = *.png ]]; then
+	if [[ "$(identify -format '%[type]' "$file")" = *Alpha ]] ; then
+		optipng -v -o7 "$file"
+	else
+		convert -quality 100 "$file" "${file}.jpg" && \
+		jpegoptim -v "${file}.jpg" && \
+		rm -f "$file"
 	fi
-done
+elif [[ "$file" = *.jpg ]] || [[ "$file" = *.jpeg ]]; then
+	jpegoptim -v "${file}"
+fi
