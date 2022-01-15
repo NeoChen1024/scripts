@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -e
+
+# This script requires ImageMagick
+
+por="$1"
+square="$2"
+land="$3"
+file="$4"
+
+shift 3
+
+msg_echo()
+{
+	echo -e "\e[44m>>\e[0m \e[32m${@}\e[0m"
+}
+
+optimize()
+{
+	local format="$1"
+	local file="$2"
+	if [[ "$format" = PNG ]]; then
+		nice -n 20 optipng -fix -v -o7 "$file"
+	elif [[ "$format" = JPEG ]] || [[ "$file" = *.jpeg ]]; then
+		nice -n 20 jpegoptim -v "$file"
+	fi
+}
+
+idline="$(identify -format "%m:%w.%h\n" "$file")"
+format="${idline%:*}"
+idline="${idline#*:}"
+width="${idline%.*}"
+height="${idline#*.}"
+
+msg_echo "(${idline}) ${file}"
+
+optimize "$format" "$file"
+
+if [ "$width" -lt "$height" ]; then
+	mv "$file" "$por"
+elif [ "$width" -eq "$height" ]; then
+	mv "$file" "$square"
+elif [ "$width" -gt "$height" ]; then
+	mv "$file" "$land"
+fi
