@@ -28,9 +28,9 @@ optimize()
 
 idline="$(identify -format "%m:%w.%h\n" "$file")"
 format="${idline%:*}"
-idline="${idline#*:}"
-width="${idline%.*}"
-height="${idline#*.}"
+whidline="${idline#*:}"
+width="${whidline%.*}"
+height="${whidline#*.}"
 
 msg_echo "(${idline}) ${file}"
 
