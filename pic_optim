@@ -9,13 +9,13 @@ file="$1"
 
 msg_echo "$file"
 if [[ "$file" = *.png ]]; then
-	if [[ "$(identify -format '%[type]' "$file")" = *Alpha ]] ; then
-		optipng -v -o7 "$file"
-	else
-		convert -quality 100 "$file" "${file}.jpg" && \
-		jpegoptim -v "${file}.jpg" && \
-		rm -f "$file"
-	fi
+	#if [[ "$(identify -format '%[type]' "$file")" = *Alpha ]] ; then
+		oxipng -i 0 -o max "$file"
+	#else
+	#	convert -quality 100 "$file" "${file}.jpg" && \
+	#	jpegoptim -v "${file}.jpg" && \
+	#	rm -f "$file"
+	#fi
 elif [[ "$file" = *.jpg ]] || [[ "$file" = *.jpeg ]]; then
 	jpegoptim -v "${file}"
 fi

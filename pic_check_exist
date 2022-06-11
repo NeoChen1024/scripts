@@ -2,7 +2,11 @@
 
 set -ex
 
-PIXIV_ID="`xclip -selection clipboard -o`"
+if [ $# -lt 1 ]; then
+	PIXIV_ID="`xclip -selection clipboard -o`"
+else
+	PIXIV_ID="$1"
+fi
 PIXIV_ID="${PIXIV_ID##*/}"
 
 echo "$PIXIV_ID"
