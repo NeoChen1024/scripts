@@ -20,7 +20,7 @@ optimize()
 	local format="$1"
 	local file="$2"
 	if [[ "$format" = PNG ]]; then
-		nice -n 20 oxipng -i 0 -o max "$file"
+		nice -n 20 oxipng -i 0 -t 1 -o max "$file"
 	elif [[ "$format" = JPEG ]]; then
 		nice -n 20 jpegoptim -v "$file"
 	else
