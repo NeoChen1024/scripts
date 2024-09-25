@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
+# Simple script for converting danbooru-style tag prompt for SD1.5/SDXL Lora
+# into natural language description for Flux.1.
+
 # This script requires curl, jo and a running local LLM server
 
 file="$1"
 llm_server="http://${2-localhost:5000}/v1/chat/completions"
 
-json_req="$(jo messages="$(jo -a "$(jo role="user" content="Convert the following danbooru-style, comma separated tags for image generation into natural-language style description, it should be in plain text, without any formatting, and nothing else:\n""$(cat "$file")")")")"
+json_req="$(jo messages="$(jo -a "$(jo role="user" content="Convert the following danbooru-style, comma separated tags for image generation into natural-language style description, the first tag is artist name, it should be in plain text, without any formatting, and nothing else:\n""$(cat "$file")")")")"
 
 { # to stderr
 echo "#############"
