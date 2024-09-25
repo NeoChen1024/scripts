@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -e
+
+# This script requires curl, jo and a running local LLM server
+
+file="$1"
+llm_server="http://${2-localhost:5000}/v1/chat/completions"
+
+json_req="$(jo messages="$(jo -a "$(jo role="user" content="Convert the following danbooru-style, comma separated tags for image generation into natural-language style description, it should be in plain text, without any formatting, and nothing else:\n""$(cat "$file")")")")"
+
+{ # to stderr
+echo "#############"
+echo "<< ${file}"
+echo ": ${json_req}"
+} 1>&2
+
+output=$(curl -sS --connect-timeout 200 "${llm_server}" \
+	-H "Content-Type: application/json" \
+	-d "${json_req}" \
+	| jq -r ".choices[0].message.content")
+
+echo "${output}" # stdout
+
+{ # to stderr
+echo "------"
+echo "LLM> ${output}"
+} 1>&2
