@@ -7,11 +7,8 @@
 
 import os
 import sys
-import PIL
 import base64
 from PIL import Image
-import requests
-import json
 from io import BytesIO
 from openai import OpenAI
 import argparse
@@ -193,10 +190,10 @@ def __main__():
         try:
             caption_output = args.caption_output # Could be None
             if caption_output is None:
-                print(">> [yellow]" + file_path + "[/yellow] => [yellow] *." + caption_extension)
+                print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow] *." + caption_extension)
                 caption_output = os.path.splitext(file_path)[0] + "." + caption_extension
             else:
-                print(">> [yellow]" + file_path + "[/yellow] => [yellow]" + caption_output + "[/yellow]")
+                print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]" + caption_output + "[/yellow]")
             
             if os.path.exists(caption_output) and args.existing_caption == "skip":
                 print("Caption file already exists, skipping...")
@@ -215,13 +212,15 @@ def __main__():
 
             print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
+            caption_response += "\n" # Add a newline at the end of the caption
+
             # Save the caption to a file
-            caption_file.write(caption_response + "\n")
+            caption_file.write(caption_response)
             caption_file.close()
             if verbose:
                 print("Caption saved to [yellow]" + caption_output \
-                    + "[/yellow] ([bright_yellow]" + humanize.naturalsize(len(caption_response) + 1) \
-                    + "[/bright_yellow])\n") # Additional newline
+                    + "[/yellow] ([bright_yellow]" + humanize.naturalsize(len(caption_response)) \
+                    + "[/bright_yellow])")
         except Exception as e:
             panic(str(e))
     # End of Loop
