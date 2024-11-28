@@ -173,8 +173,11 @@ def __main__():
     # Print all information in a banner
     if verbose:
         print("================================================")
-        print("Model:\t\t\t[cyan]" + model_name + "[/cyan]")
-        print("Base URL:\t\t[cyan]" + base_url + "[/cyan]")
+        print("Model:\t\t[cyan]" + model_name + "[/cyan]")
+        print("Base URL:\t[cyan]" + base_url + "[/cyan]")
+        print("Temperature:\t[cyan]" + str(temperature) + "[/cyan]")    
+        print("Top P:\t\t[cyan]" + str(top_p) + "[/cyan]")
+        print("Max tokens:\t[cyan]" + str(max_tokens) + "[/cyan]")
         print("Full vision prompt:")
         print(Padding("[bright_magenta]" + vision_prompt_for_colored_log + "[/bright_magenta]", (0, 0, 0, 4)))
         print("================================================")
