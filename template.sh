@@ -1,17 +1,6 @@
 #!/usr/bin/env sh
 # Bash Script Template
 
-# %DYN_LOAD%
-# Search for "neostdlib.sh" (Neo_Chen's Shell Script Standard Library)
-#for i in "/usr/lib" "/usr/local/lib" "/lib" "$HOME/lib" "$HOME/.local/lib"
-#do
-#	if [ -x "$i/neostdlib.sh" ] ;then
-#		source "$i/neostdlib.sh"
-#		break
-#	fi
-#done
-# %END_DYN_LOAD%
-
 SCRIPT_NAME="Template"
 AURTHOR="Name <email addr>"
 LICENSE="Public Domain"
