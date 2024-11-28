@@ -10,7 +10,7 @@ ignore='-'
 shift 3
 
 for i in "$@"; do
-	res=`identify -format "%w.%h" "$i"`
+	res="$(identify -format "%w.%h" "$i")"
 	width="${res%.*}"
 	height="${res#*.}"
 

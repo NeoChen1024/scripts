@@ -3,7 +3,7 @@
 set -ex
 
 if [ $# -lt 1 ]; then
-	PIXIV_ID="`xclip -selection clipboard -o`"
+	PIXIV_ID="$(xclip -selection clipboard -o)"
 else
 	PIXIV_ID="$1"
 fi
