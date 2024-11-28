@@ -57,10 +57,7 @@ def panic(e):
 
 def get_image_base64(image_path):
     # Load the image
-    try:
-        image = Image.open(image_path)
-    except Exception as e:
-        panic(str(e))
+    image = Image.open(image_path)
 
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -80,30 +77,27 @@ def get_image_base64(image_path):
     return base64.b64encode(image_jpeg.getvalue()).decode("utf-8")
 
 def get_caption_from_image(client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens):
-    try:
-        chat_response = client.chat.completions.create(
-            model=model_name,
-            stream=False,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": vision_prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    }
-                ]
-            }]
-        )
-        return chat_response.choices[0].message.content
-    except Exception as e:
-        panic(str(e))
+    chat_response = client.chat.completions.create(
+        model=model_name,
+        stream=False,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": vision_prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                }
+            ]
+        }]
+    )
+    return chat_response.choices[0].message.content
 
 def __main__():
     args = parse_args()
@@ -121,7 +115,7 @@ def __main__():
         sys.exit(1)
     
     if args.caption_output is not None and not args.caption_output.endswith("." + caption_extension):
-        print("INFO: Caption extension will be ignored if --caption_output is provided")
+        print("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if -o/--caption_output is provided")
 
     # Check if the API key is set
     api_key = "xxxx" # placeholder, it's fine for it to be any string for local LLM
@@ -187,14 +181,14 @@ def __main__():
     )
 
     for file_path in file_paths:
-        try:
-            caption_output = args.caption_output # Could be None
+        try: # catch all exceptions and continue by default
+            caption_output = args.caption_output
             if caption_output is None:
                 print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow] *." + caption_extension)
                 caption_output = os.path.splitext(file_path)[0] + "." + caption_extension
             else:
                 print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]" + caption_output + "[/yellow]")
-            
+
             if os.path.exists(caption_output) and args.existing_caption == "skip":
                 print("Caption file already exists, skipping...")
                 continue
@@ -208,21 +202,29 @@ def __main__():
                 print("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64)) + "[/bright_yellow]")
                 print("Caption:")
 
-            caption_response = get_caption_from_image(client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens)
+            try:
+                caption_response = get_caption_from_image(client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens)
+            except Exception as e:
+                panic(str(e)) # Exit on API error
 
             print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
             caption_response += "\n" # Add a newline at the end of the caption
-
             # Save the caption to a file
-            caption_file.write(caption_response)
-            caption_file.close()
+            try:
+                caption_file.write(caption_response)
+                caption_file.close()
+            except Exception as e:
+                panic(str(e)) # Exit on I/O error, so we won't waste tokens
+
             if verbose:
                 print("Caption saved to [yellow]" + caption_output \
                     + "[/yellow] ([bright_yellow]" + humanize.naturalsize(len(caption_response)) \
                     + "[/bright_yellow])")
+
         except Exception as e:
-            panic(str(e))
+            print(f"[red]Error: {e}[/red]")
+            pass # Continue on all other errors
     # End of Loop
 
 
