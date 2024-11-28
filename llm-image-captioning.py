@@ -17,6 +17,7 @@ from openai import OpenAI
 import argparse
 from rich import print
 from rich.padding import Padding
+import humanize
 
 def none_or_str(value):
     if value is None:
@@ -206,6 +207,8 @@ def __main__():
             image_base64 = get_image_base64(file_path)
 
             if verbose:
+                # print payload size in human readable format
+                print("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64)) + "[/bright_yellow]")
                 print("Caption:")
 
             caption_response = get_caption_from_image(client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens)
@@ -216,7 +219,9 @@ def __main__():
             caption_file.write(caption_response + "\n")
             caption_file.close()
             if verbose:
-                print("Caption saved to [yellow]" + caption_output + "[/yellow]\n") # Additional newline
+                print("Caption saved to [yellow]" + caption_output \
+                    + "[/yellow] ([bright_yellow]" + humanize.naturalsize(len(caption_response) + 1) \
+                    + "[/bright_yellow])\n") # Additional newline
         except Exception as e:
             panic(str(e))
     # End of Loop
