@@ -14,6 +14,7 @@ from openai import OpenAI
 import argparse
 from rich import print
 from rich.padding import Padding
+from rich.console import Console
 import humanize
 
 def none_or_str(value):
@@ -102,6 +103,7 @@ def get_caption_from_image(client, model_name, vision_prompt, image_base64, temp
     return chat_response.choices[0].message.content
 
 def __main__():
+    console = Console()
     args = parse_args()
     file_paths = args.file_paths
     additional_prompt = args.additional_prompt
@@ -113,11 +115,11 @@ def __main__():
 
     # Argument validation
     if len(file_paths) > 1 and args.caption_output is not None:
-        print("Error: Can't use --caption_output with multiple input images")
+        console.log("Error: Can't use --caption_output with multiple input images")
         sys.exit(1)
     
     if args.caption_output is not None and not args.caption_output.endswith("." + caption_extension):
-        print("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if -o/--caption_output is provided")
+        console.log("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if -o/--caption_output is provided")
 
     # Check if the API key is set
     api_key = "xxxx" # placeholder, it's fine for it to be any string for local LLM
@@ -186,13 +188,13 @@ def __main__():
         try: # catch all exceptions and continue by default
             caption_output = args.caption_output
             if caption_output is None:
-                print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow] *." + caption_extension)
+                console.log("[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow] *." + caption_extension)
                 caption_output = os.path.splitext(file_path)[0] + "." + caption_extension
             else:
-                print("\n[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]" + caption_output + "[/yellow]")
+                console.log("[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]" + caption_output + "[/yellow]")
 
             if os.path.exists(caption_output) and args.existing_caption == "skip":
-                print("Caption file already exists, skipping...")
+                console.log("Caption file already exists, skipping...")
                 continue
             # Open caption file before proceeding, so we can catch errors early
             caption_file = open(caption_output, "w", encoding="utf-8")
@@ -201,15 +203,15 @@ def __main__():
 
             if verbose:
                 # print payload size in human readable format
-                print("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64)) + "[/bright_yellow]")
-                print("Caption:")
+                console.log("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64)) + "[/bright_yellow]")
+                console.log("Caption:")
 
             try:
                 caption_response = get_caption_from_image(client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens)
             except Exception as e:
                 panic(str(e)) # Exit on API error
 
-            print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
+            console.log(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
             caption_response += "\n" # Add a newline at the end of the caption
             # Save the caption to a file
@@ -217,7 +219,7 @@ def __main__():
                 caption_file.write(caption_response)
                 caption_file.flush()
                 if verbose:
-                    print("Caption saved to [yellow]" + caption_output \
+                    console.log("Caption saved to [yellow]" + caption_output \
                         + "[/yellow] ([bright_yellow]" + humanize.naturalsize(caption_file.tell()) \
                         + "[/bright_yellow])")
                 caption_file.close()
@@ -225,7 +227,7 @@ def __main__():
                 panic(str(e)) # Exit on I/O error, so we won't waste tokens
 
         except Exception as e:
-            print(f"[red]Error: {e}[/red]")
+            console.log(f"[red]Error: {e}[/red]")
             pass # Continue on all other errors
     # End of Loop
     sys.exit(0)
