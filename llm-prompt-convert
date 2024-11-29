@@ -17,7 +17,7 @@ json_req="$(jo messages="$(jo -a "$(jo role="user" content="Convert the followin
 
 { # to stderr
 echo "#############"
-echo "<< ${file}"
+echo "<< ${infile}"
 echo ": ${json_req}"
 } 1>&2
 
@@ -27,7 +27,7 @@ output=$(curl -sS --connect-timeout 200 "${llm_server}" \
 	-d "${json_req}" \
 	| jq -r ".choices[0].message.content")
 
-echo "${output}" > "$2"
+echo "${output}" > "$outfile"
 
 { # to stderr
 echo "------"
