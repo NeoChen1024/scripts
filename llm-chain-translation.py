@@ -191,9 +191,7 @@ def __main__():
     translation_file = open(output_file, "w", encoding="utf-8")
     # truncate the file
     translation_file.truncate()
-    translation_file_size = 0
 
-    # split the text into chunks, lines_per_round lines each
     lines = text.splitlines()
     while len(lines) > 0:
         # take the first lines_per_round lines
@@ -218,12 +216,11 @@ def __main__():
 
         # Write to translation file
         current_round_translated += "\n"
-        translation_file_size += len(current_round_translated)
         translation_file.write(current_round_translated)
         translation_file.flush()
 
     print("Translation saved to [yellow]" + output_file + "[/yellow] ([bright_yellow]" \
-        + humanize.naturalsize(translation_file_size) + "[/bright_yellow])")
+        + humanize.naturalsize(translation_file.tell()) + "[/bright_yellow])")
 
 if __name__ == "__main__":
     try:
