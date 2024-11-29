@@ -83,19 +83,21 @@ def get_caption_from_image(client, model_name, vision_prompt, image_base64, temp
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=top_p,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": vision_prompt
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                }
-            ]
-        }]
+        messages=[
+            {
+                "role": "system",
+                "content": vision_prompt
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    }
+                ]
+            }
+        ]
     )
     return chat_response.choices[0].message.content
 
@@ -226,6 +228,7 @@ def __main__():
             print(f"[red]Error: {e}[/red]")
             pass # Continue on all other errors
     # End of Loop
+    sys.exit(0)
 
 
 if __name__ == "__main__":
