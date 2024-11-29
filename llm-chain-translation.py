@@ -119,7 +119,7 @@ def __main__():
         api_key = args.api_key
 
     # Get model name from environment variable if it exists
-    model_name = "pixtral-large-latest" # default model from Mistral
+    model_name = "mistral-large-latest" # default model from Mistral
     if (name := os.environ.get("LLM_MODEL_NAME")) is not None:
         model_name = name
     # Override if provided by command line argument
@@ -193,10 +193,10 @@ def __main__():
     translation_file.truncate()
     translation_file_size = 0
 
-    # split the text into chunks, 10 lines each
+    # split the text into chunks, lines_per_round lines each
     lines = text.splitlines()
     while len(lines) > 0:
-        # take the first 10 lines
+        # take the first lines_per_round lines
         current_round_original = "\n".join(lines[:lines_per_round])
         lines = lines[lines_per_round:]
 
