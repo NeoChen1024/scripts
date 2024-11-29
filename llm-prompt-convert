@@ -11,7 +11,7 @@ set -e
 
 infile="$1"
 outfile="$2"
-llm_server="http://${3-localhost:5000}/v1/chat/completions"
+llm_server="${3-http://localhost:5000}/v1/chat/completions"
 
 json_req="$(jo messages="$(jo -a "$(jo role="user" content="Convert the following danbooru-style, comma separated tags for image generation into natural-language style description, the first tag is artist name, it should be in plain text, without any formatting, and nothing else:\n""$(cat "$infile")")")")"
 
