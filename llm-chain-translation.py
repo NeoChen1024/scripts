@@ -7,10 +7,13 @@
 
 import os
 import sys
+import math
 from openai import OpenAI
 import argparse
 from rich import print
 from rich.padding import Padding
+from rich.console import Console
+from rich.progress import Progress
 import humanize
 
 def none_or_str(value):
@@ -26,11 +29,11 @@ def parse_args():
     parser.add_argument('-o', '--output_file', required=True,
             help='Path to save the translated output')
     parser.add_argument('-l', '--language', required=False, default="English",
-            help='Language to translate the text to, that the LLM can understand (default: English)')
+            help='Language to translate the text to, that the LLM can understand, will replace all %LANG% in the system prompt (default: English)')
     parser.add_argument('-n', '--lines', type=int, default=20,
             help='Number of lines to process in one round (default: 20)')
     parser.add_argument('-p', '--prompt_file',
-            help='Prompt file for translation (default: built-in)')
+            help='System prompt file for translation (default: built-in)')
     parser.add_argument('-ap', '--additional_prompt',
             help='Additional prompt for translation, replaces "%%" in the prompt, " %%" will be removed if it\'s not set (default: None)')
     parser.add_argument('-m', '--model',
@@ -90,6 +93,7 @@ def get_translation_from_text(client, model_name, system_prompt, text, temperatu
     return chat_response.choices[0].message.content
 
 def __main__():
+    console = Console()
     args = parse_args()
     input_file = args.input_file
     output_file = args.output_file
@@ -107,7 +111,7 @@ def __main__():
         panic("Input file does not exist: " + input_file)
     
     if os.path.exists(output_file) and args.existing_translation == "skip":
-        print("Translation file already exists, skipping...")
+        console.log("Translation file already exists, skipping...")
         sys.exit(0)
 
     # Check if the API key is set
@@ -135,16 +139,19 @@ def __main__():
 
     system_prompt = \
           "You are a linguistic expert capable of identifying and translating text from " \
-        + "various languages into " + language + ". Given the following text, determine the original " \
-        + "language and provide an accurate " + language + " translation. Ensure the translation " \
+        + "various languages into %LANG%. Given the following text, determine the original " \
+        + "language and provide an accurate %LANG% translation. Ensure the translation " \
         + "maintains the context and meaning of the original text according to the provided context. " \
-        + "Output only the " + language + " translation without any additional information or context. " \
+        + "Output only the %LANG% translation without any additional information or context. " \
         + "Focus on delivering an accurate and contextually relevant translation." \
         + " %%"
 
     if prompt_file is not None:
         with open(prompt_file, "r", encoding="utf-8") as f:
             system_prompt = f.read()
+
+    # Replace all %LANG% with the language
+    system_prompt = system_prompt.replace("%LANG%", language)
 
     # Save system prompt for log colorization
     system_prompt_for_colored_log = system_prompt
@@ -182,8 +189,6 @@ def __main__():
     current_round_translated = ""
     last_round_original= None
     last_round_translated= None
-    all_translations = ""
-    round_number = 0
 
     with open(input_file, "r", encoding="utf-8") as f:
         text = f.read()
@@ -193,22 +198,26 @@ def __main__():
     translation_file.truncate()
 
     lines = text.splitlines()
+
+    round_number = 1
+    total_rounds = math.ceil(len(lines) / lines_per_round)
+
     while len(lines) > 0:
         # take the first lines_per_round lines
         current_round_original = "\n".join(lines[:lines_per_round])
         lines = lines[lines_per_round:]
 
-        print("================================================")
-        print("Round [bright_white]" + str(round_number) + "[/bright_white] Input:")
-        print(Padding("[bright_yellow]" + current_round_original + "[/bright_yellow]", (0, 0, 0, 4)))
+        console.log("================================================")
+        console.log("Round [bright_white]" + str(round_number) + "/" + str(total_rounds) + "[/bright_white] Original:")
+        console.log(Padding("[bright_yellow]" + current_round_original + "[/bright_yellow]", (0, 0, 0, 4)))
 
         current_round_translated = get_translation_from_text(
             client, model_name, system_prompt, current_round_original, temperature, top_p, max_tokens,
             last_round_original, last_round_translated)
 
-        print("================================================")
-        print("Translation:")
-        print(Padding("[bright_green]" + current_round_translated + "[/bright_green]", (0, 0, 0, 4)))
+        console.log("================================================")
+        console.log("Translated:")
+        console.log(Padding("[bright_green]" + current_round_translated + "[/bright_green]", (0, 0, 0, 4)))
         # Update last round
         last_round_original = current_round_original
         last_round_translated = current_round_translated
@@ -219,8 +228,9 @@ def __main__():
         translation_file.write(current_round_translated)
         translation_file.flush()
 
-    print("Translation saved to [yellow]" + output_file + "[/yellow] ([bright_yellow]" \
+    console.log("Translation saved to [yellow]" + output_file + "[/yellow] ([bright_yellow]" \
         + humanize.naturalsize(translation_file.tell()) + "[/bright_yellow])")
+    translation_file.close()
 
 if __name__ == "__main__":
     try:
