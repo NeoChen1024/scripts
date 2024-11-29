@@ -215,14 +215,14 @@ def __main__():
             # Save the caption to a file
             try:
                 caption_file.write(caption_response)
+                caption_file.flush()
+                if verbose:
+                    print("Caption saved to [yellow]" + caption_output \
+                        + "[/yellow] ([bright_yellow]" + humanize.naturalsize(caption_file.tell()) \
+                        + "[/bright_yellow])")
                 caption_file.close()
             except Exception as e:
                 panic(str(e)) # Exit on I/O error, so we won't waste tokens
-
-            if verbose:
-                print("Caption saved to [yellow]" + caption_output \
-                    + "[/yellow] ([bright_yellow]" + humanize.naturalsize(len(caption_response)) \
-                    + "[/bright_yellow])")
 
         except Exception as e:
             print(f"[red]Error: {e}[/red]")
@@ -232,4 +232,7 @@ def __main__():
 
 
 if __name__ == "__main__":
-    __main__()
+    try:
+        __main__()
+    except Exception as e:
+        panic(str(e))
