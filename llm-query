@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -e
+
+# This script requires curl, jo and a running local LLM server
+
+llm_server="${2-http://localhost:5000}/v1/chat/completions"
+
+json_req="$(jo messages="$(jo -a "$(jo role="user" content="$1")")")"
+
+{ # to stderr
+echo "#############"
+echo ": ${json_req}"
+} 1>&2
+
+output=$(curl -sS --connect-timeout 200 "${llm_server}" \
+	-H "Content-Type: application/json" \
+	-H "Authorization: Bearer ${AUTH_TOKEN}" \
+	-d "${json_req}" \
+	| jq -r ".choices[0].message.content")
+
+{ # to stderr
+echo "------"
+echo "LLM> ${output}"
+} 1>&2
