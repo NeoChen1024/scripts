@@ -38,10 +38,10 @@ def parse_args():
             help='Override LLM API key (default: content of LLM_API_KEY environment variable)')
     parser.add_argument('-u', '--base_url',
             help='Override LLM base URL (default: Mistral\'s)')
-    parser.add_argument('-t', '--temperature', type=float, default=0.7,
-            help='Temperature for caption generation (default: 0.7)')
-    parser.add_argument('-tp', '--top_p', type=float, default=0.9,
-            help='Top P for caption generation (default: 0.9)')
+    parser.add_argument('-t', '--temperature', type=float, default=None,
+            help='Temperature for caption generation (default: None)')
+    parser.add_argument('-tp', '--top_p', type=float, default=None,
+            help='Top P for caption generation (default: None)')
     parser.add_argument('-mt', '--max_tokens', type=int, default=500,
             help='Maximum number of tokens in the caption (default: 500)')
     parser.add_argument('-v', '--verbose', default=False, action='store_true',
