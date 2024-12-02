@@ -19,16 +19,20 @@ def arg_parser():
     parser.add_argument("-l", "--list", action="store_true", help="List all tensors")
     return parser.parse_args()
 
-def read_metadata(file):
+def read_header(file):
     with open(file, "rb") as f:
+        file_size = f.seek(0, 2)
+        f.seek(0)
         # read first 8 bytes as uint64
         metadata_len = struct.unpack("<Q", f.read(8))[0]
+        if metadata_len == 0 or metadata_len > file_size:
+            print("Invalid metadata length")
+            sys.exit(1)
         # read metadata
         metadata = f.read(metadata_len)
         return json.loads(metadata.decode("utf-8"))
 
-# print metadata in table format
-# reference format:
+# safetensors JSON format:
 # {
 #    "__metadata__": {}, // optional
 #    "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight": {
@@ -67,7 +71,7 @@ def read_metadata(file):
 
 def shape_to_str(shape):
     if len(shape) == 0:
-        return "scalar"
+        return "Scalar"
     else:
         return " x ".join(map(str, shape))
 
@@ -97,13 +101,13 @@ def parse_tensors(json) -> dict:
                 continue
             shape = value["shape"]
             parameters = parameter_count(shape)
-            size = value["data_offsets"][1] - value["data_offsets"][0]
+            data_offsets = value["data_offsets"]
             dtype = value["dtype"]
 
             tensors[key] = {
                 "shape": shape,
                 "parameters": parameters,
-                "size": size,
+                "data_offsets": data_offsets,
                 "dtype": dtype
             }
     else:
@@ -125,7 +129,7 @@ def print_tensors(tensors, console):
         for key, value in tensors.items():
             shape = value["shape"]
             parameters = value["parameters"]
-            size = value["size"]
+            size = value["data_offsets"][1] - value["data_offsets"][0]
             dtype = value["dtype"]
 
             total_parameters += parameters
@@ -149,8 +153,9 @@ def summary(tensors, console):
     shape_histogram = {}
     if tensors:
         for key, value in tensors.items():
+            size = value["data_offsets"][1] - value["data_offsets"][0]
             total_parameters += value["parameters"]
-            total_size += value["size"]
+            total_size += size
             dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
             shape_histogram[shape_to_str(value["shape"])] = shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
     # sort by name
@@ -185,7 +190,7 @@ def main():
 
     args = arg_parser()
     for file in args.file:
-        metadata = read_metadata(file)
+        metadata = read_header(file)
         if args.json:
             console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
