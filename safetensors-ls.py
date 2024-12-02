@@ -175,7 +175,7 @@ def summary(tensors, console):
     console.print(table)
 
     console.print(f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})")
-    console.print(f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size)}[/bright_cyan]")
+    console.print(f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size, binary=True)}[/bright_cyan]")
     return
 
 def main():

@@ -229,7 +229,7 @@ def __main__():
         translation_file.flush()
 
     console.log("Translation saved to [yellow]" + output_file + "[/yellow] ([bright_yellow]" \
-        + humanize.naturalsize(translation_file.tell()) + "[/bright_yellow])")
+        + humanize.naturalsize(translation_file.tell(), binary=True) + "[/bright_yellow])")
     translation_file.close()
 
 if __name__ == "__main__":

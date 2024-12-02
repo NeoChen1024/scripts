@@ -203,7 +203,7 @@ def __main__():
 
             if verbose:
                 # print payload size in human readable format
-                console.log("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64)) + "[/bright_yellow]")
+                console.log("Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64), binary=True) + "[/bright_yellow]")
                 console.log("Caption:")
 
             try:
@@ -220,7 +220,7 @@ def __main__():
                 caption_file.flush()
                 if verbose:
                     console.log("Caption saved to [yellow]" + caption_output \
-                        + "[/yellow] ([bright_yellow]" + humanize.naturalsize(caption_file.tell()) \
+                        + "[/yellow] ([bright_yellow]" + humanize.naturalsize(caption_file.tell(), binary=True) \
                         + "[/bright_yellow])")
                 caption_file.close()
             except Exception as e:
