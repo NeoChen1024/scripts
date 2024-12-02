@@ -10,6 +10,7 @@ import argparse
 import numpy
 import torch
 import safetensors
+from datetime import datetime
 from safetensors.torch import save_file
 from rich.console import Console
 from rich.table import Table
@@ -23,11 +24,15 @@ def arg_parser():
     parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
     parser.add_argument("-of", "--output-format", type=str, help="Output dtype (default: bf16)", default="bf16")
     # skip CLIP-{L,G} and VAE weights
-    parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights")
-    parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights")
+    parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
+    parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights, leave them as is from the first model")
     # load VAE (no support for CLIP-{L,G}, because they are always present in the models)
     parser.add_argument("-lv", "--vae-input", type=str, help="Path to the VAE safetensors file", default=None)
     parser.add_argument("--vae-dtype", type=str, help="Cast VAE weights to dtype (default: None)", default=None)
+    # metadata
+    parser.add_argument("--title", type=str, help="Title of the merged model", default=None)
+    parser.add_argument("--description", type=str, help="Description of the merged model", default=None)
+    parser.add_argument("--author", type=str, help="Author of the merged model", default=None)
     return parser.parse_args()
 
 dtype_map = {
@@ -58,8 +63,9 @@ def error_exit(console, message):
     sys.exit(1)
 
 def main():
-    install()
     console = Console()
+    install(console=console)
+
     args = arg_parser()
     if not args.input:
         error_exit(console, "No input files specified")
@@ -72,7 +78,7 @@ def main():
         sys.exit(1)
     if args.output_format not in dtype_map:
         error_exit(console, f"Invalid output dtype: {args.output_format}")
-    if args.vae_dtype not in dtype_map:
+    if args.vae_dtype and args.vae_dtype not in dtype_map:
         error_exit(console, f"Invalid VAE dtype: {args.vae_dtype}")
 
     input_files = {}
@@ -88,8 +94,7 @@ def main():
     # print input and weight
     console.log(f"Input and weight: ({len(args.input)} model(s))")
     for i in range(len(args.input)):
-        console.log(f"\tInput {i}: {input_files[i]}")
-        console.log(f"\tWeight {i}: {model_weights[input_files[i]]}")
+        console.log(f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}")
 
     # read first model and cast to fp32 for accumulation precision
     output_model = read_model(args.input[0][0], torch.float)
@@ -129,8 +134,20 @@ def main():
         for key in vae_model.keys():
             output_model[f"first_stage_model.{key}"] = vae_model[key]
 
+    formula = " + ".join([f"{os.path.basename(input_files[i])} * {model_weights[input_files[i]]}" for i in range(len(input_files))])
+    # metadata
+    model_name = args.title if args.title else os.path.basename(args.output)
+    description = args.description if args.description else formula
+    author = args.author if args.author else "SD-Merger"
     console.log(f"Saving to {args.output}...")
-    save_file(output_model, args.output)
+    metadata = {
+        "modelspec.title": model_name,
+        "modelspec.date": datetime.now().strftime("%Y-%m-%d"),
+        "modelspec.description": description,
+        "modelspec.author": author,
+    }
+    console.log(f"Metadata: {metadata}")
+    save_file(output_model, args.output, metadata=metadata)
 
     console.log("Done!")
     return
