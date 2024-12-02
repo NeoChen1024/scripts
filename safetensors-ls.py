@@ -99,13 +99,15 @@ def print_tensors(metadata, console):
         for key, value in metadata.items():
             if key == "__metadata__":
                 continue
-            total_parameters += parameter_count(value["shape"])
-            total_size += value["data_offsets"][1] - value["data_offsets"][0]
+            current_parameters = parameter_count(value["shape"])
+            current_size = value["data_offsets"][1] - value["data_offsets"][0]
+            total_parameters += current_parameters
+            total_size += current_size
             table.add_row(key,
                 shape_to_str(value["shape"]),
-                str(parameter_count(value["shape"])),
+                str(current_parameters),
                 value["dtype"],
-                humanize.naturalsize(value["data_offsets"][1] - value["data_offsets"][0]))
+                humanize.naturalsize(current_size))
     else:
         console.print("[yellow]No tensors...[/yellow]")
 
