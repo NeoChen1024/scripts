@@ -187,7 +187,7 @@ def main():
     for file in args.file:
         metadata = read_metadata(file)
         if args.json:
-            console.print(json.dumps(metadata, indent=4, sort_keys=True))
+            console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
             print_metadata(metadata, console)
             tensors = parse_tensors(metadata)
