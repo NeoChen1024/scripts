@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # Script to merge SD1.5/SDXL models into a single model
-# TODO: add support for loading VAE and selectively merge/skip VAE/CLIP-{L,G} weights
 
 import os
 import sys
@@ -26,7 +25,7 @@ def arg_parser():
     # skip CLIP-{L,G} and VAE weights
     parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
     parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights, leave them as is from the first model")
-    # load VAE (no support for CLIP-{L,G}, because they are always present in the models)
+    # load VAE
     parser.add_argument("-lv", "--vae-input", type=str, help="Path to the VAE safetensors file", default=None)
     parser.add_argument("--vae-dtype", type=str, help="Cast VAE weights to dtype (default: None)", default=None)
     # metadata
@@ -97,10 +96,10 @@ def main():
         console.log(f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}")
 
     # read first model and cast to fp32 for accumulation precision
-    output_model = read_model(args.input[0][0], torch.float)
-    console.log(f"Reading first model: {args.input[0][0]}")
-    # scale first model by weight[0]
-    console.log(f"Scaling first model by weight[0]: {model_weights[input_files[0]]}")
+    output_model = read_model(input_files[0], torch.float)
+    console.log(f"Reading first model: {input_files[0]}")
+    # scale first model
+    console.log(f"Scaling first model by weight: {model_weights[input_files[0]]}")
     for key in output_model.keys():
         if key.startswith("first_stage_model.") and args.skip_vae:
             continue
@@ -133,6 +132,7 @@ def main():
         vae_model = read_model(args.vae_input, dtype_map[args.vae_dtype])
         for key in vae_model.keys():
             output_model[f"first_stage_model.{key}"] = vae_model[key]
+        del vae_model
 
     formula = " + ".join([f"{os.path.basename(input_files[i])} * {model_weights[input_files[i]]}" for i in range(len(input_files))])
     # metadata
