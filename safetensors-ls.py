@@ -6,6 +6,7 @@ import struct
 import json
 import argparse
 import math
+import natsort
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
@@ -14,7 +15,8 @@ import humanize
 def arg_parser():
     parser = argparse.ArgumentParser(description="View safetensors metadata without safetensors library")
     parser.add_argument("file", type=str, help="Path to the safetensors file", nargs="+")
-    parser.add_argument("--json", action="store_true", help="Output metadata in JSON format")
+    parser.add_argument("-j", "--json", action="store_true", help="Dump all metadata in JSON format")
+    parser.add_argument("-l", "--list", action="store_true", help="List all tensors")
     return parser.parse_args()
 
 def read_metadata(file):
@@ -64,7 +66,10 @@ def read_metadata(file):
 # .....
 
 def shape_to_str(shape):
-    return " x ".join(map(str, shape))
+    if len(shape) == 0:
+        return "scalar"
+    else:
+        return " x ".join(map(str, shape))
 
 def parameter_count(shape):
     return math.prod(shape)
@@ -80,11 +85,32 @@ def print_metadata(metadata, console):
             table.add_row(key, value)
         console.print(table)
     else:
-        console.print("[yellow]No metadata...[/yellow]")
+        console.print("[r]No metadata[/r]\n")
 
     return
 
-def print_tensors(metadata, console):
+def parse_tensors(json) -> dict:
+    tensors = {}
+    if len(json) > 1:
+        for key, value in json.items():
+            if key == "__metadata__":
+                continue
+            shape = value["shape"]
+            parameters = parameter_count(shape)
+            size = value["data_offsets"][1] - value["data_offsets"][0]
+            dtype = value["dtype"]
+
+            tensors[key] = {
+                "shape": shape,
+                "parameters": parameters,
+                "size": size,
+                "dtype": dtype
+            }
+    else:
+        return None
+    return tensors
+
+def print_tensors(tensors, console):
     total_parameters = 0
     total_size = 0
 
@@ -95,27 +121,61 @@ def print_tensors(metadata, console):
     table.add_column("Parameters")
     table.add_column("Dtype")
     table.add_column("Size")
-    if len(metadata) > 1:
-        for key, value in metadata.items():
-            if key == "__metadata__":
-                continue
-            current_parameters = parameter_count(value["shape"])
-            current_size = value["data_offsets"][1] - value["data_offsets"][0]
-            total_parameters += current_parameters
-            total_size += current_size
+    if tensors:
+        for key, value in tensors.items():
+            shape = value["shape"]
+            parameters = value["parameters"]
+            size = value["size"]
+            dtype = value["dtype"]
+
+            total_parameters += parameters
+            total_size += size
             table.add_row(key,
-                shape_to_str(value["shape"]),
-                str(current_parameters),
-                value["dtype"],
-                humanize.naturalsize(current_size))
+                shape_to_str(shape),
+                str(parameters),
+                dtype,
+                humanize.naturalsize(size))
     else:
         console.print("[yellow]No tensors...[/yellow]")
+    
+    console.print(table)
 
+    return
+
+def summary(tensors, console):
+    total_parameters = 0
+    total_size = 0
+    dtype_histogram = {}
+    shape_histogram = {}
+    if tensors:
+        for key, value in tensors.items():
+            total_parameters += value["parameters"]
+            total_size += value["size"]
+            dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
+            shape_histogram[shape_to_str(value["shape"])] = shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
+    # sort by name
+    dtype_histogram = sorted(dtype_histogram.items(), key=lambda x: x[0])
+    # natural sort by shape
+    shape_histogram = natsort.natsorted(shape_histogram.items(), key=lambda x: x[0])
+
+    table = Table(safe_box=True, highlight=True)
+    table.title = "dtype histogram"
+    table.add_column("Dtype")
+    table.add_column("Count")
+    for dtype, count in dtype_histogram:
+        table.add_row(dtype, str(count))
+    console.print(table)
+
+    table = Table(safe_box=True, highlight=True)
+    table.title = "shape histogram"
+    table.add_column("Shape")
+    table.add_column("Count")
+    for shape, count in shape_histogram:
+        table.add_row(shape, str(count))
     console.print(table)
 
     console.print(f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})")
     console.print(f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size)}[/bright_cyan]")
-
     return
 
 def main():
@@ -130,7 +190,10 @@ def main():
             console.print(json.dumps(metadata, indent=4, sort_keys=True))
         else:
             print_metadata(metadata, console)
-            print_tensors(metadata, console)
+            tensors = parse_tensors(metadata)
+            if args.list:
+                print_tensors(tensors, console)
+            summary(tensors, console)
     sys.exit(0)
 
 if __name__ == "__main__":
