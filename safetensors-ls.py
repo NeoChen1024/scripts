@@ -89,28 +89,7 @@ def print_metadata(metadata, console):
 
     return
 
-def parse_tensors(json) -> dict:
-    tensors = {}
-    if len(json) > 1:
-        for key, value in json.items():
-            if key == "__metadata__":
-                continue
-            shape = value["shape"]
-            parameters = parameter_count(shape)
-            size = value["data_offsets"][1] - value["data_offsets"][0]
-            dtype = value["dtype"]
-
-            tensors[key] = {
-                "shape": shape,
-                "parameters": parameters,
-                "size": size,
-                "dtype": dtype
-            }
-    else:
-        return None
-    return tensors
-
-def print_tensors(tensors, console):
+def print_tensors(metadata, console):
     total_parameters = 0
     total_size = 0
 
@@ -121,11 +100,13 @@ def print_tensors(tensors, console):
     table.add_column("Parameters")
     table.add_column("Dtype")
     table.add_column("Size")
-    if tensors:
-        for key, value in tensors.items():
+    if metadata:
+        for key, value in metadata.items():
+            if key == "__metadata__":
+                continue
             shape = value["shape"]
-            parameters = value["parameters"]
-            size = value["size"]
+            parameters = parameter_count(shape)
+            size = value["data_offsets"][1] - value["data_offsets"][0]
             dtype = value["dtype"]
 
             total_parameters += parameters
@@ -142,15 +123,17 @@ def print_tensors(tensors, console):
 
     return
 
-def summary(tensors, console):
+def summary(metadata, console):
     total_parameters = 0
     total_size = 0
     dtype_histogram = {}
     shape_histogram = {}
-    if tensors:
-        for key, value in tensors.items():
-            total_parameters += value["parameters"]
-            total_size += value["size"]
+    if metadata:
+        for key, value in metadata.items():
+            if key == "__metadata__":
+                continue
+            total_parameters += parameter_count(value["shape"])
+            total_size += value["data_offsets"][1] - value["data_offsets"][0]
             dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
             shape_histogram[shape_to_str(value["shape"])] = shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
     # sort by name
@@ -185,15 +168,15 @@ def main():
 
     args = arg_parser()
     for file in args.file:
+        console.print(f"Reading [bright_magenta]{file}[/bright_magenta]")
         metadata = read_metadata(file)
         if args.json:
             console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
             print_metadata(metadata, console)
-            tensors = parse_tensors(metadata)
             if args.list:
-                print_tensors(tensors, console)
-            summary(tensors, console)
+                print_tensors(metadata, console)
+            summary(metadata, console)
     sys.exit(0)
 
 if __name__ == "__main__":
