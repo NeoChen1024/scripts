@@ -16,24 +16,6 @@ from rich.table import Table
 from rich.traceback import install
 from rich.progress import Progress
 
-def arg_parser():
-    parser = argparse.ArgumentParser(description="Merge safetensors models into a single model")
-    parser.add_argument("-i", "--input", type=str, help="Path to the safetensors file", nargs="+", action="append")
-    parser.add_argument("-w", "--weight", type=float, help="Weight for each model", nargs="+", action="append")
-    parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
-    parser.add_argument("-of", "--output-format", type=str, help="Output dtype (default: bf16)", default="bf16")
-    # skip CLIP-{L,G} and VAE weights
-    parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
-    parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights, leave them as is from the first model")
-    # load VAE
-    parser.add_argument("-lv", "--vae-input", type=str, help="Path to the VAE safetensors file", default=None)
-    parser.add_argument("--vae-dtype", type=str, help="Cast VAE weights to dtype (default: None)", default=None)
-    # metadata
-    parser.add_argument("--title", type=str, help="Title of the merged model", default=None)
-    parser.add_argument("--description", type=str, help="Description of the merged model", default=None)
-    parser.add_argument("--author", type=str, help="Author of the merged model", default=None)
-    return parser.parse_args()
-
 dtype_map = {
     # safetensors
     "F32": torch.float,
@@ -52,6 +34,24 @@ dtype_name = {
     torch.float16: "FP16",
     torch.bfloat16: "BF16"
 }
+
+def arg_parser():
+    parser = argparse.ArgumentParser(description="Merge safetensors models into a single model")
+    parser.add_argument("-i", "--input", type=str, help="Path to the safetensors file", nargs="+", action="append")
+    parser.add_argument("-w", "--weight", type=float, help="Weight for each model", nargs="+", action="append")
+    parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
+    parser.add_argument("-of", "--output-format", type=str, help="Output dtype (default: bf16)", default="bf16", choices=list(dtype_map.keys()))
+    # skip CLIP-{L,G} and VAE weights
+    parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
+    parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights, leave them as is from the first model")
+    # load VAE
+    parser.add_argument("-lv", "--vae-input", type=str, help="Path to the VAE safetensors file", default=None)
+    parser.add_argument("--vae-dtype", type=str, help="Cast VAE weights to dtype (default: None)", default=None, choices=list(dtype_map.keys()))
+    # metadata
+    parser.add_argument("--title", type=str, help="Title of the merged model", default=None)
+    parser.add_argument("--description", type=str, help="Description of the merged model", default=None)
+    parser.add_argument("--author", type=str, help="Author of the merged model", default=None)
+    return parser.parse_args()
 
 def read_model(file, dtype=None) -> dict:
     tensors = {}
@@ -72,19 +72,8 @@ def main():
     install(console=console)
 
     args = arg_parser()
-    if not args.input:
-        error_exit(console, "No input files specified")
-    if not args.output:
-        error_exit(console, "No output file specified")
-    if not args.weight:
-        error_exit(console, "No weight specified")
     if len(args.input) != len(args.weight):
         error_exit(console, "Number of input files and weights should be the same")
-        sys.exit(1)
-    if args.output_format not in dtype_map:
-        error_exit(console, f"Invalid output dtype: {args.output_format}")
-    if args.vae_dtype and args.vae_dtype not in dtype_map:
-        error_exit(console, f"Invalid VAE dtype: {args.vae_dtype}")
 
     output_dtype = dtype_map[args.output_format]
     input_files = {}
@@ -128,12 +117,12 @@ def main():
             output_model[key] += weight * merge_model[key]
         del merge_model # free memory, memory is precious
 
-    # check if any tensor will overflow / NaN
+    # Check if any tensor will overflow / underflow / NaN / Inf
+    console.log(f"Checking for overflow / underflow / NaN / Inf ...")
     count_overflow = 0
     count_underflow = 0
     count_nan = 0
     count_inf = 0
-    console.log(f"Checking for overflow / NaN ...")
     max_val = torch.finfo(output_dtype).max
     min_val = torch.finfo(output_dtype).tiny
     for key in output_model.keys():
@@ -146,13 +135,13 @@ def main():
         if torch.isinf(output_model[key]).any():
             count_inf += 1
     if count_overflow > 0:
-        console.log(f"[red]Warning:[/red] {count_overflow} tensor(s) will overflow in {dtype_name[output_dtype]}") 
+        console.log(f"[red]Warning:[/red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}") 
     if count_underflow > 0:
-        console.log(f"[red]Warning:[/red] {count_underflow} tensor(s) will underflow in {dtype_name[output_dtype]}") 
+        console.log(f"[red]Warning:[/red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}") 
     if count_nan > 0:
         console.log(f"[red]Warning:[/red] {count_nan} tensor(s) contain NaN") 
     if count_inf > 0:
-        console.log(f"[red]Warning:[/red]    {count_inf} tensor(s) contain Inf") 
+        console.log(f"[red]Warning:[/red] {count_inf} tensor(s) contain Inf") 
 
     console.log(f"Casting to {dtype_name[output_dtype]}...")
 
@@ -187,5 +176,4 @@ def main():
     return
 
 if __name__ == "__main__":
-    install()
     main()
