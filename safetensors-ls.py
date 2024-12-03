@@ -25,7 +25,7 @@ def read_header(file):
         f.seek(0)
         # read first 8 bytes as uint64
         metadata_len = struct.unpack("<Q", f.read(8))[0]
-        if metadata_len == 0 or metadata_len > file_size:
+        if metadata_len <= 2 or metadata_len > file_size: # at least 2 bytes for "{}"
             print("Invalid metadata length")
             sys.exit(1)
         # read metadata
@@ -93,6 +93,11 @@ def print_metadata(metadata, console):
 
     return
 
+def strip_metadata(metadata):
+    if "__metadata__" in metadata:
+        del metadata["__metadata__"]
+    return metadata
+
 def print_tensors(metadata, console):
     total_parameters = 0
     total_size = 0
@@ -104,10 +109,8 @@ def print_tensors(metadata, console):
     table.add_column("Parameters")
     table.add_column("Dtype")
     table.add_column("Size")
-    if metadata:
+    if len(metadata) > 0:
         for key, value in metadata.items():
-            if key == "__metadata__":
-                continue
             shape = value["shape"]
             parameters = parameter_count(shape)
             size = value["data_offsets"][1] - value["data_offsets"][0]
@@ -132,10 +135,8 @@ def summary(metadata, console):
     total_size = 0
     dtype_histogram = {}
     shape_histogram = {}
-    if metadata:
+    if len(metadata) > 0:
         for key, value in metadata.items():
-            if key == "__metadata__":
-                continue
             total_parameters += parameter_count(value["shape"])
             total_size += value["data_offsets"][1] - value["data_offsets"][0]
             dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
@@ -178,6 +179,7 @@ def main():
             console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
             print_metadata(metadata, console)
+            metadata = strip_metadata(metadata)
             if args.list:
                 print_tensors(metadata, console)
             summary(metadata, console)
