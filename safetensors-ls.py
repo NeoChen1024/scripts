@@ -19,16 +19,20 @@ def arg_parser():
     parser.add_argument("-l", "--list", action="store_true", help="List all tensors")
     return parser.parse_args()
 
-def read_metadata(file):
+def read_header(file):
     with open(file, "rb") as f:
+        file_size = f.seek(0, 2)
+        f.seek(0)
         # read first 8 bytes as uint64
         metadata_len = struct.unpack("<Q", f.read(8))[0]
+        if metadata_len == 0 or metadata_len > file_size:
+            print("Invalid metadata length")
+            sys.exit(1)
         # read metadata
         metadata = f.read(metadata_len)
         return json.loads(metadata.decode("utf-8"))
 
-# print metadata in table format
-# reference format:
+# safetensors JSON format:
 # {
 #    "__metadata__": {}, // optional
 #    "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight": {
@@ -67,7 +71,7 @@ def read_metadata(file):
 
 def shape_to_str(shape):
     if len(shape) == 0:
-        return "scalar"
+        return "Scalar"
     else:
         return " x ".join(map(str, shape))
 
@@ -169,7 +173,7 @@ def main():
     args = arg_parser()
     for file in args.file:
         console.print(f"Reading [bright_magenta]{file}[/bright_magenta]")
-        metadata = read_metadata(file)
+        metadata = read_header(file)
         if args.json:
             console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
