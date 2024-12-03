@@ -47,6 +47,12 @@ dtype_map = {
     "fp32": torch.float
 }
 
+dtype_name = {
+    torch.float: "FP32",
+    torch.float16: "FP16",
+    torch.bfloat16: "BF16"
+}
+
 def read_model(file, dtype=None) -> dict:
     tensors = {}
     with safetensors.safe_open(file, framework="pt", device="cpu") as f:
@@ -80,6 +86,7 @@ def main():
     if args.vae_dtype and args.vae_dtype not in dtype_map:
         error_exit(console, f"Invalid VAE dtype: {args.vae_dtype}")
 
+    output_dtype = dtype_map[args.output_format]
     input_files = {}
     model_weights = {}
     for i in range(len(args.input)):
@@ -91,7 +98,7 @@ def main():
         console.log(f"Warning: weights do not add up to 1: {total_weight}")
 
     # print input and weight
-    console.log(f"Input and weight: ({len(args.input)} model(s))")
+    console.log(f"Input and weight: {len(args.input)} model(s)")
     for i in range(len(args.input)):
         console.log(f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}")
 
@@ -122,22 +129,36 @@ def main():
         del merge_model # free memory, memory is precious
 
     # check if any tensor will overflow / NaN
-    if dtype_map[args.output_format] == torch.float16:
-        console.log(f"Checking for overflow / NaN ...")
-        max_val = torch.finfo(torch.float16).max
-        for key in output_model.keys():
-            if output_model[key].abs().max() > max_val:
-                console.log(f"Warning: tensor {key} will overflow in FP16") 
-            if torch.isnan(output_model[key]).any():
-                console.log(f"Warning: tensor {key} contains NaN") 
-            if torch.isinf(output_model[key]).any():
-                console.log(f"Warning: tensor {key} contains Inf") 
+    count_overflow = 0
+    count_underflow = 0
+    count_nan = 0
+    count_inf = 0
+    console.log(f"Checking for overflow / NaN ...")
+    max_val = torch.finfo(output_dtype).max
+    min_val = torch.finfo(output_dtype).tiny
+    for key in output_model.keys():
+        if output_model[key].abs().max() > max_val:
+            count_overflow += 1
+        if output_model[key].abs().min() < min_val:
+            count_underflow += 1
+        if torch.isnan(output_model[key]).any():
+            count_nan += 1
+        if torch.isinf(output_model[key]).any():
+            count_inf += 1
+    if count_overflow > 0:
+        console.log(f"[red]Warning:[/red] {count_overflow} tensor(s) will overflow in {dtype_name[output_dtype]}") 
+    if count_underflow > 0:
+        console.log(f"[red]Warning:[/red] {count_underflow} tensor(s) will underflow in {dtype_name[output_dtype]}") 
+    if count_nan > 0:
+        console.log(f"[red]Warning:[/red] {count_nan} tensor(s) contain NaN") 
+    if count_inf > 0:
+        console.log(f"[red]Warning:[/red]    {count_inf} tensor(s) contain Inf") 
 
-    console.log(f"Casting to {args.output_format}...")
+    console.log(f"Casting to {dtype_name[output_dtype]}...")
 
     # cast to output dtype
     for key in output_model.keys():
-        output_model[key] = output_model[key].to(dtype_map[args.output_format])
+        output_model[key] = output_model[key].to(output_dtype)
     
     # override VAE weights if specified, the key name prefix is the same in SD1.5/SDXL
     if args.vae_input:
