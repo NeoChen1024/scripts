@@ -121,11 +121,24 @@ def main():
             output_model[key] += weight * merge_model[key]
         del merge_model # free memory, memory is precious
 
+    # check if any tensor will overflow / NaN
+    if dtype_map[args.output_format] == torch.float16:
+        console.log(f"Checking for overflow / NaN ...")
+        max_val = torch.finfo(torch.float16).max
+        for key in output_model.keys():
+            if output_model[key].abs().max() > max_val:
+                console.log(f"Warning: tensor {key} will overflow in FP16") 
+            if torch.isnan(output_model[key]).any():
+                console.log(f"Warning: tensor {key} contains NaN") 
+            if torch.isinf(output_model[key]).any():
+                console.log(f"Warning: tensor {key} contains Inf") 
+
     console.log(f"Casting to {args.output_format}...")
+
     # cast to output dtype
     for key in output_model.keys():
         output_model[key] = output_model[key].to(dtype_map[args.output_format])
-
+    
     # override VAE weights if specified, the key name prefix is the same in SD1.5/SDXL
     if args.vae_input:
         console.log(f"Overriding VAE weights with {args.vae_input}...")
