@@ -2,19 +2,20 @@
 
 # Script to merge SD1.5/SDXL models into a single model
 
-from itertools import accumulate
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
-import numpy
-import torch
-import safetensors
 from datetime import datetime
-from safetensors.torch import save_file
+from itertools import accumulate
+
+import numpy
+import safetensors
+import torch
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
+from safetensors.torch import save_file
 
 dtype_map = {
     # safetensors
@@ -26,45 +27,89 @@ dtype_map = {
     "fp16": torch.float16,
     "bf16": torch.bfloat16,
     # sane name
-    "fp32": torch.float
+    "fp32": torch.float,
 }
 
-dtype_name = {
-    torch.float: "FP32",
-    torch.float16: "FP16",
-    torch.bfloat16: "BF16"
-}
+dtype_name = {torch.float: "FP32", torch.float16: "FP16", torch.bfloat16: "BF16"}
+
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description="Merge safetensors models into a single model")
-    parser.add_argument("-i", "--input", type=str,
-        help="Path to the safetensors file", nargs="+", action="append")
-    parser.add_argument("-w", "--weight", type=float,
-        help="Weight for each model", nargs="+", action="append")
-    parser.add_argument("-af", "--accumulate-format", type=str,
-        help="Accumulate dtype (default: fp32)", default="fp32", choices=list(dtype_map.keys()))
-    parser.add_argument("-o", "--output", type=str,
-        help="Output file", required=True)
-    parser.add_argument("-of", "--output-format", type=str,
-        help="Output dtype (default: bf16)", default="bf16", choices=list(dtype_map.keys()))
+    parser = argparse.ArgumentParser(
+        description="Merge safetensors models into a single model"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        help="Path to the safetensors file",
+        nargs="+",
+        action="append",
+    )
+    parser.add_argument(
+        "-w",
+        "--weight",
+        type=float,
+        help="Weight for each model",
+        nargs="+",
+        action="append",
+    )
+    parser.add_argument(
+        "-af",
+        "--accumulate-format",
+        type=str,
+        help="Accumulate dtype (default: fp32)",
+        default="fp32",
+        choices=list(dtype_map.keys()),
+    )
+    parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
+    parser.add_argument(
+        "-of",
+        "--output-format",
+        type=str,
+        help="Output dtype (default: bf16)",
+        default="bf16",
+        choices=list(dtype_map.keys()),
+    )
     # skip CLIP-{L,G} and VAE weights
-    parser.add_argument("-sc", "--skip-clip", action="store_true",
-        help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
-    parser.add_argument("-sv", "--skip-vae", action="store_true",
-        help="Skip merging VAE weights, leave them as is from the first model")
+    parser.add_argument(
+        "-sc",
+        "--skip-clip",
+        action="store_true",
+        help="Skip merging CLIP-{L,G} weights, leave them as is from the first model",
+    )
+    parser.add_argument(
+        "-sv",
+        "--skip-vae",
+        action="store_true",
+        help="Skip merging VAE weights, leave them as is from the first model",
+    )
     # load VAE
-    parser.add_argument("-lv", "--vae-input", type=str,
-        help="Path to the VAE safetensors file", default=None)
-    parser.add_argument("--vae-dtype", type=str,
-        help="Cast VAE weights to dtype (default: None)", default=None, choices=list(dtype_map.keys()))
+    parser.add_argument(
+        "-lv",
+        "--vae-input",
+        type=str,
+        help="Path to the VAE safetensors file",
+        default=None,
+    )
+    parser.add_argument(
+        "--vae-dtype",
+        type=str,
+        help="Cast VAE weights to dtype (default: None)",
+        default=None,
+        choices=list(dtype_map.keys()),
+    )
     # metadata
-    parser.add_argument("--title", type=str,
-        help="Title of the merged model", default=None)
-    parser.add_argument("--description", type=str,
-        help="Description of the merged model", default=None)
-    parser.add_argument("--author", type=str,
-        help="Author of the merged model", default=None)
+    parser.add_argument(
+        "--title", type=str, help="Title of the merged model", default=None
+    )
+    parser.add_argument(
+        "--description", type=str, help="Description of the merged model", default=None
+    )
+    parser.add_argument(
+        "--author", type=str, help="Author of the merged model", default=None
+    )
     return parser.parse_args()
+
 
 def read_model(file, dtype=None) -> dict:
     tensors = {}
@@ -76,9 +121,11 @@ def read_model(file, dtype=None) -> dict:
                 tensors[key] = f.get_tensor(key)
     return tensors
 
+
 def error_exit(console, message):
     console.log(message)
     sys.exit(1)
+
 
 # Check if the tensor will have rounding to zero in the output dtype
 def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
@@ -90,6 +137,7 @@ def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
     if tensor_test.abs().min() < underflow_limit:
         return True
     return False
+
 
 def main():
     console = Console()
@@ -109,12 +157,16 @@ def main():
     # check if all weights add up to 1
     total_weight = sum(model_weights.values())
     if total_weight != 1:
-        console.log(f"[bright_red]Warning:[/bright_red] weights do not add up to 1: {total_weight}")
+        console.log(
+            f"[bright_red]Warning:[/bright_red] weights do not add up to 1: {total_weight}"
+        )
 
     # print input and weight
     console.log(f"Input and weight: {len(args.input)} model(s)")
     for i in range(len(args.input)):
-        console.log(f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}")
+        console.log(
+            f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}"
+        )
 
     # read first model and cast to accumulation precision
     output_model = read_model(input_files[0], accumulate_dtype)
@@ -124,23 +176,27 @@ def main():
     for key in output_model.keys():
         if key.startswith("first_stage_model.") and args.skip_vae:
             continue
-        if (key.startswith("cond_stage_model.") or key.startswith("conditioner.")) and args.skip_clip:
+        if (
+            key.startswith("cond_stage_model.") or key.startswith("conditioner.")
+        ) and args.skip_clip:
             continue
         output_model[key] *= model_weights[input_files[0]]
 
     console.log("Starting to merge models...")
-    for i in range(1, len(input_files), 1): # skip first model
+    for i in range(1, len(input_files), 1):  # skip first model
         input_file = input_files[i]
         weight = model_weights[input_file]
-        merge_model = read_model(input_file) # no need for casting to float
+        merge_model = read_model(input_file)  # no need for casting to float
         console.log(f"Merging model {i} ({input_file}) with weight {weight} ...")
         for key in output_model.keys():
             if key.startswith("first_stage_model.") and args.skip_vae:
                 continue
-            if (key.startswith("cond_stage_model.") or key.startswith("conditioner.")) and args.skip_clip:
+            if (
+                key.startswith("cond_stage_model.") or key.startswith("conditioner.")
+            ) and args.skip_clip:
                 continue
             output_model[key] += weight * merge_model[key]
-        del merge_model # free memory, memory is precious
+        del merge_model  # free memory, memory is precious
 
     # Check if any tensor will overflow / underflow / NaN / Inf
     console.log(f"Checking for overflow / underflow / NaN / Inf ...")
@@ -159,20 +215,28 @@ def main():
         if torch.isinf(output_model[key]).any():
             count_inf += 1
     if count_overflow > 0:
-        console.log(f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}") 
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}"
+        )
     if count_underflow > 0:
-        console.log(f"[bright_red]Warning:[/bright_red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}") 
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}"
+        )
     if count_nan > 0:
-        console.log(f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN") 
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN"
+        )
     if count_inf > 0:
-        console.log(f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf") 
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf"
+        )
 
     console.log(f"Casting to {dtype_name[output_dtype]}...")
 
     # cast to output dtype
     for key in output_model.keys():
         output_model[key] = output_model[key].to(output_dtype)
-    
+
     # override VAE weights if specified, the key name prefix is the same in SD1.5/SDXL
     if args.vae_input:
         console.log(f"Overriding VAE weights with {args.vae_input}...")
@@ -181,7 +245,12 @@ def main():
             output_model[f"first_stage_model.{key}"] = vae_model[key]
         del vae_model
 
-    formula = " + ".join([f"{os.path.basename(input_files[i])} * {model_weights[input_files[i]]}" for i in range(len(input_files))])
+    formula = " + ".join(
+        [
+            f"{os.path.basename(input_files[i])} * {model_weights[input_files[i]]}"
+            for i in range(len(input_files))
+        ]
+    )
     # metadata
     model_name = args.title if args.title else os.path.basename(args.output)
     description = args.description if args.description else formula
@@ -198,6 +267,7 @@ def main():
 
     console.log("Done!")
     return
+
 
 if __name__ == "__main__":
     main()

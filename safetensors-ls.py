@@ -1,23 +1,32 @@
 #!/usr/bin/env python
 # view safetensors metadata without safetensors library
 
-import sys
-import struct
-import json
 import argparse
+import json
 import math
+import struct
+import sys
+
+import humanize
 import natsort
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
-import humanize
+
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description="View safetensors metadata without safetensors library")
-    parser.add_argument("file", type=str, help="Path to the safetensors file", nargs="+")
-    parser.add_argument("-j", "--json", action="store_true", help="Dump all metadata in JSON format")
+    parser = argparse.ArgumentParser(
+        description="View safetensors metadata without safetensors library"
+    )
+    parser.add_argument(
+        "file", type=str, help="Path to the safetensors file", nargs="+"
+    )
+    parser.add_argument(
+        "-j", "--json", action="store_true", help="Dump all metadata in JSON format"
+    )
     parser.add_argument("-l", "--list", action="store_true", help="List all tensors")
     return parser.parse_args()
+
 
 def read_header(file):
     with open(file, "rb") as f:
@@ -25,12 +34,13 @@ def read_header(file):
         f.seek(0)
         # read first 8 bytes as uint64
         metadata_len = struct.unpack("<Q", f.read(8))[0]
-        if metadata_len <= 2 or metadata_len > file_size: # at least 2 bytes for "{}"
+        if metadata_len <= 2 or metadata_len > file_size:  # at least 2 bytes for "{}"
             print("Invalid metadata length")
             sys.exit(1)
         # read metadata
         metadata = f.read(metadata_len)
         return json.loads(metadata.decode("utf-8"))
+
 
 # safetensors JSON format:
 # {
@@ -69,14 +79,17 @@ def read_header(file):
 #    },
 # .....
 
+
 def shape_to_str(shape):
     if len(shape) == 0:
         return "Scalar"
     else:
         return " x ".join(map(str, shape))
 
+
 def parameter_count(shape):
     return math.prod(shape)
+
 
 def print_metadata(metadata, console):
     table = Table(safe_box=True, highlight=True)
@@ -93,10 +106,12 @@ def print_metadata(metadata, console):
 
     return
 
+
 def strip_metadata(metadata):
     if "__metadata__" in metadata:
         del metadata["__metadata__"]
     return metadata
+
 
 def print_tensors(metadata, console):
     total_parameters = 0
@@ -118,17 +133,20 @@ def print_tensors(metadata, console):
 
             total_parameters += parameters
             total_size += size
-            table.add_row(key,
+            table.add_row(
+                key,
                 shape_to_str(shape),
                 str(parameters),
                 dtype,
-                humanize.naturalsize(size))
+                humanize.naturalsize(size),
+            )
     else:
         console.print("[yellow]No tensors...[/yellow]")
-    
+
     console.print(table)
 
     return
+
 
 def summary(metadata, console):
     total_parameters = 0
@@ -140,7 +158,9 @@ def summary(metadata, console):
             total_parameters += parameter_count(value["shape"])
             total_size += value["data_offsets"][1] - value["data_offsets"][0]
             dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
-            shape_histogram[shape_to_str(value["shape"])] = shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
+            shape_histogram[shape_to_str(value["shape"])] = (
+                shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
+            )
     # sort by name
     dtype_histogram = sorted(dtype_histogram.items(), key=lambda x: x[0])
     # natural sort by shape
@@ -162,9 +182,14 @@ def summary(metadata, console):
         table.add_row(shape, str(count))
     console.print(table)
 
-    console.print(f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})")
-    console.print(f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size, binary=True)}[/bright_cyan]")
+    console.print(
+        f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})"
+    )
+    console.print(
+        f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size, binary=True)}[/bright_cyan]"
+    )
     return
+
 
 def main():
     install(show_locals=True)
@@ -184,6 +209,7 @@ def main():
                 print_tensors(metadata, console)
             summary(metadata, console)
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()
