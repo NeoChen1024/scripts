@@ -38,21 +38,33 @@ dtype_name = {
 
 def arg_parser():
     parser = argparse.ArgumentParser(description="Merge safetensors models into a single model")
-    parser.add_argument("-i", "--input", type=str, help="Path to the safetensors file", nargs="+", action="append")
-    parser.add_argument("-w", "--weight", type=float, help="Weight for each model", nargs="+", action="append")
-    parser.add_argument("-af", "--accumulate-format", type=str, help="Accumulate dtype (default: fp32)", default="fp32", choices=list(dtype_map.keys()))
-    parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
-    parser.add_argument("-of", "--output-format", type=str, help="Output dtype (default: bf16)", default="bf16", choices=list(dtype_map.keys()))
+    parser.add_argument("-i", "--input", type=str,
+        help="Path to the safetensors file", nargs="+", action="append")
+    parser.add_argument("-w", "--weight", type=float,
+        help="Weight for each model", nargs="+", action="append")
+    parser.add_argument("-af", "--accumulate-format", type=str,
+        help="Accumulate dtype (default: fp32)", default="fp32", choices=list(dtype_map.keys()))
+    parser.add_argument("-o", "--output", type=str,
+        help="Output file", required=True)
+    parser.add_argument("-of", "--output-format", type=str,
+        help="Output dtype (default: bf16)", default="bf16", choices=list(dtype_map.keys()))
     # skip CLIP-{L,G} and VAE weights
-    parser.add_argument("-sc", "--skip-clip", action="store_true", help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
-    parser.add_argument("-sv", "--skip-vae", action="store_true", help="Skip merging VAE weights, leave them as is from the first model")
+    parser.add_argument("-sc", "--skip-clip", action="store_true",
+        help="Skip merging CLIP-{L,G} weights, leave them as is from the first model")
+    parser.add_argument("-sv", "--skip-vae", action="store_true",
+        help="Skip merging VAE weights, leave them as is from the first model")
     # load VAE
-    parser.add_argument("-lv", "--vae-input", type=str, help="Path to the VAE safetensors file", default=None)
-    parser.add_argument("--vae-dtype", type=str, help="Cast VAE weights to dtype (default: None)", default=None, choices=list(dtype_map.keys()))
+    parser.add_argument("-lv", "--vae-input", type=str,
+        help="Path to the VAE safetensors file", default=None)
+    parser.add_argument("--vae-dtype", type=str,
+        help="Cast VAE weights to dtype (default: None)", default=None, choices=list(dtype_map.keys()))
     # metadata
-    parser.add_argument("--title", type=str, help="Title of the merged model", default=None)
-    parser.add_argument("--description", type=str, help="Description of the merged model", default=None)
-    parser.add_argument("--author", type=str, help="Author of the merged model", default=None)
+    parser.add_argument("--title", type=str,
+        help="Title of the merged model", default=None)
+    parser.add_argument("--description", type=str,
+        help="Description of the merged model", default=None)
+    parser.add_argument("--author", type=str,
+        help="Author of the merged model", default=None)
     return parser.parse_args()
 
 def read_model(file, dtype=None) -> dict:
@@ -87,7 +99,7 @@ def main():
     # check if all weights add up to 1
     total_weight = sum(model_weights.values())
     if total_weight != 1:
-        console.log(f"[red]Warning[/red]: weights do not add up to 1: {total_weight}")
+        console.log(f"[bright_red]Warning:[/bright_red] weights do not add up to 1: {total_weight}")
 
     # print input and weight
     console.log(f"Input and weight: {len(args.input)} model(s)")
@@ -138,13 +150,13 @@ def main():
         if torch.isinf(output_model[key]).any():
             count_inf += 1
     if count_overflow > 0:
-        console.log(f"[red]Warning:[/red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}") 
+        console.log(f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}") 
     if count_underflow > 0:
-        console.log(f"[red]Warning:[/red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}") 
+        console.log(f"[bright_red]Warning:[/bright_red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}") 
     if count_nan > 0:
-        console.log(f"[red]Warning:[/red] {count_nan} tensor(s) contain NaN") 
+        console.log(f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN") 
     if count_inf > 0:
-        console.log(f"[red]Warning:[/red] {count_inf} tensor(s) contain Inf") 
+        console.log(f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf") 
 
     console.log(f"Casting to {dtype_name[output_dtype]}...")
 
