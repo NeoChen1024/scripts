@@ -15,7 +15,6 @@ from safetensors.torch import save_file
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
-from rich.progress import Progress
 
 dtype_map = {
     # safetensors
@@ -81,6 +80,17 @@ def error_exit(console, message):
     console.log(message)
     sys.exit(1)
 
+# Check if the tensor will have rounding to zero in the output dtype
+def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
+    tensor_test = tensor
+    underflow_limit = torch.finfo(output_dtype).tiny
+    # set all 0 values to 1
+    tensor_test[tensor_test == 0] = 1
+    # check if any remaining value is less than underflow limit
+    if tensor_test.abs().min() < underflow_limit:
+        return True
+    return False
+
 def main():
     console = Console()
     install(console=console)
@@ -139,11 +149,10 @@ def main():
     count_nan = 0
     count_inf = 0
     max_val = torch.finfo(output_dtype).max
-    min_val = torch.finfo(output_dtype).tiny
     for key in output_model.keys():
         if output_model[key].abs().max() > max_val:
             count_overflow += 1
-        if output_model[key].abs().min() < min_val:
+        if check_tensor_rounding_to_zero(output_model[key], output_dtype):
             count_underflow += 1
         if torch.isnan(output_model[key]).any():
             count_nan += 1
