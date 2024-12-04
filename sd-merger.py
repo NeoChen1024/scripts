@@ -2,6 +2,7 @@
 
 # Script to merge SD1.5/SDXL models into a single model
 
+from itertools import accumulate
 import os
 import sys
 import json
@@ -39,6 +40,7 @@ def arg_parser():
     parser = argparse.ArgumentParser(description="Merge safetensors models into a single model")
     parser.add_argument("-i", "--input", type=str, help="Path to the safetensors file", nargs="+", action="append")
     parser.add_argument("-w", "--weight", type=float, help="Weight for each model", nargs="+", action="append")
+    parser.add_argument("-af", "--accumulate-format", type=str, help="Accumulate dtype (default: fp32)", default="fp32", choices=list(dtype_map.keys()))
     parser.add_argument("-o", "--output", type=str, help="Output file", required=True)
     parser.add_argument("-of", "--output-format", type=str, help="Output dtype (default: bf16)", default="bf16", choices=list(dtype_map.keys()))
     # skip CLIP-{L,G} and VAE weights
@@ -75,6 +77,7 @@ def main():
     if len(args.input) != len(args.weight):
         error_exit(console, "Number of input files and weights should be the same")
 
+    accumulate_dtype = dtype_map[args.accumulate_format]
     output_dtype = dtype_map[args.output_format]
     input_files = {}
     model_weights = {}
@@ -84,15 +87,15 @@ def main():
     # check if all weights add up to 1
     total_weight = sum(model_weights.values())
     if total_weight != 1:
-        console.log(f"Warning: weights do not add up to 1: {total_weight}")
+        console.log(f"[red]Warning[/red]: weights do not add up to 1: {total_weight}")
 
     # print input and weight
     console.log(f"Input and weight: {len(args.input)} model(s)")
     for i in range(len(args.input)):
         console.log(f"\tInput {i}: {input_files[i]} with weight {model_weights[input_files[i]]}")
 
-    # read first model and cast to fp32 for accumulation precision
-    output_model = read_model(input_files[0], torch.float)
+    # read first model and cast to accumulation precision
+    output_model = read_model(input_files[0], accumulate_dtype)
     console.log(f"Reading first model: {input_files[0]}")
     # scale first model
     console.log(f"Scaling first model by weight: {model_weights[input_files[0]]}")
