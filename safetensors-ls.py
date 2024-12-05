@@ -8,7 +8,6 @@ import struct
 import sys
 
 import humanize
-import natsort
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
@@ -158,13 +157,13 @@ def summary(metadata, console):
             total_parameters += parameter_count(value["shape"])
             total_size += value["data_offsets"][1] - value["data_offsets"][0]
             dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
-            shape_histogram[shape_to_str(value["shape"])] = (
-                shape_histogram.get(shape_to_str(value["shape"]), 0) + 1
+            shape_histogram[tuple(value["shape"])] = (
+                shape_histogram.get(tuple(value["shape"]), 0) + 1
             )
     # sort by name
     dtype_histogram = sorted(dtype_histogram.items(), key=lambda x: x[0])
     # natural sort by shape
-    shape_histogram = natsort.natsorted(shape_histogram.items(), key=lambda x: x[0])
+    shape_histogram = sorted(shape_histogram.items(), key=lambda x: x[0])
 
     table = Table(safe_box=True, highlight=True)
     table.title = "dtype histogram"
@@ -179,7 +178,7 @@ def summary(metadata, console):
     table.add_column("Shape")
     table.add_column("Count")
     for shape, count in shape_histogram:
-        table.add_row(shape, str(count))
+        table.add_row(shape_to_str(shape), str(count))
     console.print(table)
 
     console.print(
