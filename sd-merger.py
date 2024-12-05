@@ -3,11 +3,10 @@
 # Script to merge SD1.5/SDXL models into a single model
 
 import argparse
-import json
 import os
 import sys
+import gc
 from datetime import datetime
-from itertools import accumulate
 
 import numpy
 import safetensors
@@ -196,7 +195,8 @@ def main():
             ) and args.skip_clip:
                 continue
             output_model[key] += weight * merge_model[key]
-        del merge_model  # free memory, memory is precious
+        del merge_model
+        gc.collect()  # free memory, memory is precious
 
     # Check if any tensor will overflow / rounding to zero / NaN / Inf
     console.log(f"Checking for overflow / rounding to zero / NaN / Inf ...")
