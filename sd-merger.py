@@ -130,11 +130,11 @@ def error_exit(console, message):
 # Check if the tensor will have rounding to zero in the output dtype
 def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
     tensor_test = tensor
-    underflow_limit = torch.finfo(output_dtype).tiny
+    rtz_limit = torch.finfo(output_dtype).tiny
     # set all 0 values to 1
     tensor_test[tensor_test == 0] = 1
     # check if any remaining value is less than underflow limit
-    if tensor_test.abs().min() < underflow_limit:
+    if tensor_test.abs().min() < rtz_limit:
         return True
     return False
 
@@ -198,10 +198,10 @@ def main():
             output_model[key] += weight * merge_model[key]
         del merge_model  # free memory, memory is precious
 
-    # Check if any tensor will overflow / underflow / NaN / Inf
-    console.log(f"Checking for overflow / underflow / NaN / Inf ...")
+    # Check if any tensor will overflow / rounding to zero / NaN / Inf
+    console.log(f"Checking for overflow / rounding to zero / NaN / Inf ...")
     count_overflow = 0
-    count_underflow = 0
+    count_rtz = 0
     count_nan = 0
     count_inf = 0
     max_val = torch.finfo(output_dtype).max
@@ -209,7 +209,7 @@ def main():
         if output_model[key].abs().max() > max_val:
             count_overflow += 1
         if check_tensor_rounding_to_zero(output_model[key], output_dtype):
-            count_underflow += 1
+            count_rtz += 1
         if torch.isnan(output_model[key]).any():
             count_nan += 1
         if torch.isinf(output_model[key]).any():
@@ -218,9 +218,9 @@ def main():
         console.log(
             f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}"
         )
-    if count_underflow > 0:
+    if count_rtz > 0:
         console.log(
-            f"[bright_red]Warning:[/bright_red] {count_underflow} tensor(s) will have underflow in {dtype_name[output_dtype]}"
+            f"[bright_red]Warning:[/bright_red] {count_rtz} tensor(s) will have rounding to zero in {dtype_name[output_dtype]}"
         )
     if count_nan > 0:
         console.log(
