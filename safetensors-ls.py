@@ -86,7 +86,7 @@ def shape_to_str(shape):
         return " x ".join(map(str, shape))
 
 
-def parameter_count(shape):
+def shape_to_parameter_count(shape):
     return math.prod(shape)
 
 
@@ -126,7 +126,7 @@ def print_tensors(metadata, console):
     if len(metadata) > 0:
         for key, value in metadata.items():
             shape = value["shape"]
-            parameters = parameter_count(shape)
+            parameters = shape_to_parameter_count(shape)
             size = value["data_offsets"][1] - value["data_offsets"][0]
             dtype = value["dtype"]
 
@@ -151,14 +151,20 @@ def summary(metadata, console):
     total_parameters = 0
     total_size = 0
     dtype_histogram = {}
+    # shape_histogram -> {(shape, dtype), count}
     shape_histogram = {}
     if len(metadata) > 0:
         for key, value in metadata.items():
-            total_parameters += parameter_count(value["shape"])
-            total_size += value["data_offsets"][1] - value["data_offsets"][0]
-            dtype_histogram[value["dtype"]] = dtype_histogram.get(value["dtype"], 0) + 1
-            shape_histogram[tuple(value["shape"])] = (
-                shape_histogram.get(tuple(value["shape"]), 0) + 1
+            shape = value["shape"]
+            parameters = shape_to_parameter_count(shape)
+            size = value["data_offsets"][1] - value["data_offsets"][0]
+            dtype = value["dtype"]
+
+            total_parameters += parameters
+            total_size += size
+            dtype_histogram[dtype] = dtype_histogram.get(dtype, 0) + 1
+            shape_histogram[(tuple(shape), dtype)] = (
+                shape_histogram.get((tuple(shape), dtype), 0) + 1
             )
     # sort by name
     dtype_histogram = sorted(dtype_histogram.items(), key=lambda x: x[0])
@@ -166,7 +172,7 @@ def summary(metadata, console):
     shape_histogram = sorted(shape_histogram.items(), key=lambda x: x[0])
 
     table = Table(safe_box=True, highlight=True)
-    table.title = "dtype histogram"
+    table.title = "Dtype histogram"
     table.add_column("Dtype")
     table.add_column("Count")
     for dtype, count in dtype_histogram:
@@ -174,11 +180,12 @@ def summary(metadata, console):
     console.print(table)
 
     table = Table(safe_box=True, highlight=True)
-    table.title = "shape histogram"
+    table.title = "Shape histogram"
     table.add_column("Shape")
+    table.add_column("Dtype")
     table.add_column("Count")
-    for shape, count in shape_histogram:
-        table.add_row(shape_to_str(shape), str(count))
+    for (shape, dtype), count in shape_histogram:
+        table.add_row(shape_to_str(shape), dtype, str(count))
     console.print(table)
 
     console.print(
