@@ -194,7 +194,7 @@ def main():
                 key.startswith("cond_stage_model.") or key.startswith("conditioner.")
             ) and args.skip_clip:
                 continue
-            output_model[key] += weight * merge_model[key]
+            output_model[key] += weight * merge_model[key].to(accumulate_dtype)
         del merge_model
         gc.collect()  # free memory, memory is precious
 
