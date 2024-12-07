@@ -128,7 +128,7 @@ def error_exit(console, message):
 
 # Check if the tensor will have rounding to zero in the output dtype
 def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
-    tensor_test = tensor
+    tensor_test = tensor.detach().clone()
     rtz_limit = torch.finfo(output_dtype).tiny
     # set all 0 values to 1
     tensor_test[tensor_test == 0] = 1
