@@ -137,7 +137,7 @@ def print_tensors(metadata, console):
                 shape_to_str(shape),
                 str(parameters),
                 dtype,
-                humanize.naturalsize(size),
+                humanize.naturalsize(size, binary=True),
             )
     else:
         console.print("[yellow]No tensors...[/yellow]")
