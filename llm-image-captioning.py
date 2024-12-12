@@ -133,10 +133,13 @@ def get_caption_from_image(
         max_tokens=max_tokens,
         temperature=temperature,
         messages=[
-            {"role": "system", "content": vision_prompt},
             {
                 "role": "user",
                 "content": [
+                    {
+                        "type": "text",
+                        "text": vision_prompt
+                    },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
@@ -198,7 +201,7 @@ def __main__():
         + " The caption should be as descriptive, detailed, and specific as possible,"
         + " including people's ethnicity, gender, face, eye color, hair color,"
         + " clothing, accessories, objects, actions, and context, camera angle, etc."
-        + ' The caption should not start with phrases like "An image of" or "A photo of". %%'
+        + ' The caption should not start with phrases like "An image of", "This image" or "A photo of". %%'
     )
 
     if args.vision_prompt_file is not None:
