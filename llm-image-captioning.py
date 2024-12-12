@@ -66,13 +66,6 @@ def parse_args():
         help="Temperature for caption generation (default: None)",
     )
     parser.add_argument(
-        "-tp",
-        "--top_p",
-        type=float,
-        default=None,
-        help="Top P for caption generation (default: None)",
-    )
-    parser.add_argument(
         "-mt",
         "--max_tokens",
         type=int,
@@ -132,14 +125,13 @@ def get_image_base64(image_path):
 
 
 def get_caption_from_image(
-    client, model_name, vision_prompt, image_base64, temperature, top_p, max_tokens
+    client, model_name, vision_prompt, image_base64, temperature, max_tokens
 ):
     chat_response = client.chat.completions.create(
         model=model_name,
         stream=False,
         max_tokens=max_tokens,
         temperature=temperature,
-        top_p=top_p,
         messages=[
             {"role": "system", "content": vision_prompt},
             {
@@ -164,7 +156,6 @@ def __main__():
     verbose = args.verbose
     temperature = args.temperature
     caption_extension = args.caption_extension
-    top_p = args.top_p
     max_tokens = args.max_tokens
 
     # Argument validation
@@ -237,7 +228,6 @@ def __main__():
         print("Model:\t\t[cyan]" + model_name + "[/cyan]")
         print("Base URL:\t[cyan]" + base_url + "[/cyan]")
         print("Temperature:\t[cyan]" + str(temperature) + "[/cyan]")
-        print("Top P:\t\t[cyan]" + str(top_p) + "[/cyan]")
         print("Max tokens:\t[cyan]" + str(max_tokens) + "[/cyan]")
         print("Full vision prompt:")
         print(
@@ -267,13 +257,14 @@ def __main__():
                     os.path.splitext(file_path)[0] + "." + caption_extension
                 )
             else:
-                console.log(
+                file_msg = (
                     "[white on blue]>>[/white on blue] [yellow]"
                     + file_path
                     + "[/yellow] => [yellow]"
                     + caption_output
                     + "[/yellow]"
                 )
+                console.log(file_msg)
 
             if os.path.exists(caption_output) and args.existing_caption == "skip":
                 console.log("Caption file already exists, skipping...")
@@ -299,15 +290,18 @@ def __main__():
                     vision_prompt,
                     image_base64,
                     temperature,
-                    top_p,
                     max_tokens,
                 )
             except Exception as e:
                 panic(str(e))  # Exit on API error
 
-            console.log(
-                Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
+            padded_response = Padding(
+                "[green]" + caption_response + "[/green]", (0, 0, 0, 4)
             )
+            if verbose:
+                console.log(padded_response)
+            else:
+                print(padded_response)
 
             caption_response += "\n"  # Add a newline at the end of the caption
             # Save the caption to a file
