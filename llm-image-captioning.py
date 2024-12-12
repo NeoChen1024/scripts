@@ -3,7 +3,7 @@
 # Designed to be used with GNU parallel to achieve batch inference
 # Example:
 # find . -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | \
-#     parallel --bar -0 -j 16 ~/vcs/scripts/llm-image-captioning.py '{}' -ex skip
+#     parallel --bar -0 -j 16 -n 16 --lb ~/vcs/scripts/llm-image-captioning.py '{}' -ex skip
 
 import argparse
 import base64
