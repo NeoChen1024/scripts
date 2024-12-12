@@ -246,8 +246,10 @@ def __main__():
     for file_path in file_paths:
         try:  # catch all exceptions and continue by default
             caption_output = args.caption_output
+            filename_info_line = ""
             if caption_output is None:
-                console.log(
+                
+                filename_info_line = (
                     "[white on blue]>>[/white on blue] [yellow]"
                     + file_path
                     + "[/yellow] => [yellow] *."
@@ -264,7 +266,11 @@ def __main__():
                     + caption_output
                     + "[/yellow]"
                 )
-                console.log(file_msg)
+            
+            if verbose:
+                console.log(filename_info_line)
+            #else: # postpone info printing so it will work better with GNU parallel's --lb (line buffer)
+            #    print(filename_info_line)
 
             if os.path.exists(caption_output) and args.existing_caption == "skip":
                 console.log("Caption file already exists, skipping...")
@@ -301,6 +307,7 @@ def __main__():
             if verbose:
                 console.log(padded_response)
             else:
+                print(filename_info_line)
                 print(padded_response)
 
             caption_response += "\n"  # Add a newline at the end of the caption
