@@ -201,7 +201,8 @@ def __main__():
         + " The caption should be as descriptive, detailed, and specific as possible,"
         + " including people's ethnicity, gender, face, eye color, hair color,"
         + " clothing, accessories, objects, actions, and context, camera angle, etc."
-        + ' Do not mention the image itself. %%'
+        + ' Do not mention the image itself, the caption should not start with phrases'
+        + ' like "An image of", "This image", "The image" or "A photo of". %%'
     )
 
     if args.vision_prompt_file is not None:
