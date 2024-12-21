@@ -11,32 +11,28 @@ from os import walk
 import sys
 import argparse
 import shutil
-from openai import files
-from rich import print
-from rich.console import Console
-from rich.traceback import install
+from tabnanny import verbose
+from typing import Callable
 
-install()
-console = Console()
-
-
-def filename_flatten(path, strip_level=0):
+def filename_flatten(path: str, strip_level: int = 0, delimiter: str = "_") -> str:
     path = os.path.normpath(path).split(os.sep)
     if strip_level < 0 or strip_level >= len(path):
-        console.log(f"Invalid strip level {strip_level} for path {path}")
+        print(f"Invalid strip level {strip_level} for path {path}")
     dirs = path[strip_level:-1]  # get directories
-    directories = "_".join(dirs)
+    directories = delimiter.join(dirs)
     filename = path[-1]
     return f"{directories}_{filename}"
 
 
-def traverse_dir(inputdir, outputdir, strip_level, function=shutil.copy2):
+def traverse_dir(
+    inputdir: str, outputdir: str, strip_level: int, function: Callable, delimiter: str
+) -> None:
     for dirpath, dirnames, filenames in walk(inputdir):
         files = [os.path.join(dirpath, file) for file in filenames]
         for file in files:
-            new_name = filename_flatten(file, strip_level)
+            new_name = filename_flatten(file, strip_level, delimiter)
             new_path = os.path.join(outputdir, new_name)
-            console.log(f"{file} ==> {new_path}")
+            print(f"\t{file} ==> {new_path}")
             function(file, new_path)
 
 
@@ -58,6 +54,9 @@ def parsearg():
         choices=["copy", "move", "symlink", "hardlink"],
         help="Choose between modes. (default: copy)",
     )
+    parser.add_argument(
+        "-d", "--delimiter", type=str, default="_", help="Delimiter for directory names"
+    )
     return parser.parse_args()
 
 
@@ -66,6 +65,8 @@ def main():
     inputdir = args.input
     outputdir = args.output
     strip_level = args.strip
+    delimiter = args.delimiter
+
     # Modes: 'copy', 'move', 'symlink', 'hardlink'
     if args.mode == "copy":
         func = shutil.copy2
@@ -84,10 +85,10 @@ def main():
     if strip_level is None:
         strip_level = len(os.path.normpath(inputdir).split(os.path.sep))
 
-    console.log(
+    print(
         f"Flattening {inputdir} --> {outputdir} and strip {strip_level} levels of directories"
     )
-    traverse_dir(inputdir, outputdir, strip_level, func)
+    traverse_dir(inputdir, outputdir, strip_level, func, delimiter)
 
 
 if __name__ == "__main__":
