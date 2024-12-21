@@ -136,14 +136,11 @@ def get_caption_from_image(
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "text",
-                        "text": vision_prompt
-                    },
+                    {"type": "text", "text": vision_prompt},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    }
+                    },
                 ],
             },
         ],
@@ -201,7 +198,7 @@ def __main__():
         + " The caption should be as descriptive, detailed, and specific as possible,"
         + " including people's ethnicity, gender, face, eye color, hair color,"
         + " clothing, accessories, objects, actions, and context, camera angle, etc."
-        + ' Do not mention the image itself, the caption should not start with phrases'
+        + " Do not mention the image itself, the caption should not start with phrases"
         + ' like "An image of", "This image", "The image" or "A photo of". %%'
     )
 
@@ -252,7 +249,7 @@ def __main__():
             caption_output = args.caption_output
             filename_info_line = ""
             if caption_output is None:
-                
+
                 filename_info_line = (
                     "[white on blue]>>[/white on blue] [yellow]"
                     + file_path
@@ -270,10 +267,10 @@ def __main__():
                     + caption_output
                     + "[/yellow]"
                 )
-            
+
             if verbose:
                 console.log(filename_info_line)
-            #else: # postpone info printing so it will work better with GNU parallel's --lb (line buffer)
+            # else: # postpone info printing so it will work better with GNU parallel's --lb (line buffer)
             #    print(filename_info_line)
 
             if os.path.exists(caption_output) and args.existing_caption == "skip":
