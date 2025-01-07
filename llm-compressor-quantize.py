@@ -142,7 +142,7 @@ def main():
     ]
 
     # Save to disk compressed.
-    save_dir = model_id + "-W8A8"
+    save_dir = model_id + args.scheme
     if args.output_dir is not None:
         save_dir = args.output_dir
 
@@ -169,6 +169,7 @@ def main():
     tokenizer.save_pretrained(save_dir)
 
     return
+
 
 if __name__ == "__main__":
     main()
