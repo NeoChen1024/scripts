@@ -7,11 +7,9 @@
 
 
 import os
-from os import walk
 import sys
 import argparse
 import shutil
-from tabnanny import verbose
 from typing import Callable
 
 def filename_flatten(path: str, strip_level: int = 0, delimiter: str = "_") -> str:
@@ -27,7 +25,7 @@ def filename_flatten(path: str, strip_level: int = 0, delimiter: str = "_") -> s
 def traverse_dir(
     inputdir: str, outputdir: str, strip_level: int, function: Callable, delimiter: str
 ) -> None:
-    for dirpath, dirnames, filenames in walk(inputdir):
+    for dirpath, dirnames, filenames in os.walk(inputdir):
         files = [os.path.join(dirpath, file) for file in filenames]
         for file in files:
             new_name = filename_flatten(file, strip_level, delimiter)
