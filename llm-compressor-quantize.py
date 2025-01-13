@@ -6,11 +6,13 @@ import sys
 
 import torch
 from datasets import load_dataset
-from llmcompressor.modifiers.quantization import GPTQModifier
+from llmcompressor.modifiers.quantization import GPTQModifier, QuantizationModifier
 from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
-from llmcompressor.transformers import SparseAutoModelForCausalLM, oneshot
-from transformers import AutoTokenizer
+from llmcompressor.transformers import oneshot
+from llmcompressor.transformers.compression.helpers import calculate_offload_device_map
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
+# Require latest transformers and llmcompressor
 
 # Parse arguments.
 def parse_args():
@@ -41,12 +43,6 @@ def parse_args():
         type=int,
         default=4096,
         help="Maximum sequence length to use for calibration.",
-    )
-    parser.add_argument(
-        "--targets",
-        type=str,
-        default="Linear",
-        help="Target layer type to quantize. (default: Linear)",
     )
     parser.add_argument(
         "--scheme",
@@ -85,20 +81,36 @@ def parse_args():
         default="Hello my name is",
         help="Prompt to use for sample generation.",
     )
+    parser.add_argument(
+        "--num_gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to use for quantization",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        help="Trust remote code for loading model and tokenizer.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     model_id = args.model_id
+    scheme = args.scheme
     max_sequence_length = args.max_sequence_length
     num_calibration_samples = args.num_calibration_samples
 
+    device_map = calculate_offload_device_map(model_id, reserve_for_hessians=True, num_gpus=args.num_gpus)
+
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = SparseAutoModelForCausalLM.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        device_map="auto",
+        device_map=device_map,
+        low_cpu_mem_usage=True,
         torch_dtype="auto",
+        trust_remote_code=args.trust_remote_code,
     )
 
     # Load dataset and preprocess.
@@ -111,19 +123,24 @@ def main():
         }
 
     ignore_list = args.ignore
-
-    recipe = [
-        SmoothQuantModifier(smoothing_strength=args.smoothing_strength),
-        GPTQModifier(
-            targets=args.targets,
-            scheme=args.scheme,
-            ignore=ignore_list,
-            dampening_frac=args.dampening_frac,
-        ),
-    ]
+    recipe = []
+    if scheme.startswith("FP8"):
+        recipe = QuantizationModifier(
+            targets="Linear", scheme=scheme, ignore=ignore_list
+        )
+    elif scheme.startswith("W"):
+        recipe = [
+            SmoothQuantModifier(smoothing_strength=args.smoothing_strength),
+            GPTQModifier(
+                targets="Linear",
+                scheme=scheme,
+                ignore=ignore_list,
+                dampening_frac=args.dampening_frac,
+            ),
+        ]
 
     # Save to disk compressed.
-    save_dir = model_id + '-' + args.scheme
+    save_dir = model_id + '-' + scheme
     if args.output_dir is not None:
         save_dir = args.output_dir
     
@@ -134,6 +151,7 @@ def main():
         max_seq_length=max_sequence_length,
         num_calibration_samples=num_calibration_samples,
         output_dir=save_dir,
+        tokenizer=tokenizer,
         save_compressed=True,
     )
 
@@ -144,8 +162,6 @@ def main():
     output = model.generate(input_ids, max_new_tokens=100)
     print(tokenizer.decode(output[0]))
     print("==========================================\n\n")
-
-    tokenizer.save_pretrained(save_dir)
 
     return
 
