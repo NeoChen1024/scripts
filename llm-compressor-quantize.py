@@ -123,7 +123,7 @@ def main():
     ]
 
     # Save to disk compressed.
-    save_dir = model_id + args.scheme
+    save_dir = model_id + '-' + args.scheme
     if args.output_dir is not None:
         save_dir = args.output_dir
     
