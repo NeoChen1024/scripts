@@ -1,16 +1,15 @@
 #!/usr/bin/env python
-import sys
+import argparse
 import gc
 import os
+import sys
+
 import torch
-import argparse
-
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 from llmcompressor.modifiers.quantization import GPTQModifier
 from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
-from llmcompressor.transformers import oneshot, wrap_hf_model_class
+from llmcompressor.transformers import SparseAutoModelForCausalLM, oneshot
+from transformers import AutoTokenizer
 
 
 # Parse arguments.
@@ -22,13 +21,13 @@ def parse_args():
     parser.add_argument(
         "--dataset_id",
         type=str,
-        default="HuggingFaceH4/ultrachat_200k",
+        default="neuralmagic/LLM_compression_calibration",
         help="Dataset ID to use for calibration.",
     )
     parser.add_argument(
         "--dataset_split",
         type=str,
-        default="train_sft",
+        default="train",
         help="Dataset split to use for calibration.",
     )
     parser.add_argument(
@@ -65,7 +64,6 @@ def parse_args():
         "--ignore",
         type=str,
         nargs="*",
-        action="append",
         default=["lm_head"],
         help="Tensors to ignore during quantization.",
     )
@@ -74,6 +72,12 @@ def parse_args():
         type=float,
         default=0.8,
         help="SmoothQuant smoothing strength.",
+    )
+    parser.add_argument(
+        "--dampening_frac",
+        type=float,
+        default=0.1,
+        help="Dampening fraction for GPTQModifier.",
     )
     parser.add_argument(
         "--sample_prompt",
@@ -91,18 +95,7 @@ def main():
     num_calibration_samples = args.num_calibration_samples
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map="auto",
-        torch_dtype="auto",
-    )
-
-    # Must wrap model class, otherwise llm-compressor won't save quantized weight correctly.
-    cls = wrap_hf_model_class(type(model))
-    del model
-    gc.collect()
-    torch.cuda.empty_cache()
-    model = cls.from_pretrained(
+    model = SparseAutoModelForCausalLM.from_pretrained(
         model_id,
         device_map="auto",
         torch_dtype="auto",
@@ -112,48 +105,34 @@ def main():
     ds = load_dataset(args.dataset_id, split=args.dataset_split)
     ds = ds.shuffle(seed=42).select(range(num_calibration_samples))
 
-    def preprocess(example):
+    def preprocess_fn(example):
         return {
-            "text": tokenizer.apply_chat_template(
-                example["messages"],
-                tokenize=False,
-            )
+            "text": tokenizer.apply_chat_template(example["messages"], tokenize=False)
         }
-
-    ds = ds.map(preprocess)
-
-    # Tokenize inputs.
-    def tokenize(sample):
-        return tokenizer(
-            sample["text"],
-            padding=False,
-            max_length=max_sequence_length,
-            truncation=True,
-            add_special_tokens=False,
-        )
-
-    ds = ds.map(tokenize, remove_columns=ds.column_names)
 
     ignore_list = args.ignore
 
     recipe = [
-        SmoothQuantModifier(smoothing_strength=0.8),
-        GPTQModifier(targets=args.targets, scheme=args.scheme, ignore=ignore_list),
+        SmoothQuantModifier(smoothing_strength=args.smoothing_strength),
+        GPTQModifier(
+            targets=args.targets,
+            scheme=args.scheme,
+            ignore=ignore_list,
+            dampening_frac=args.dampening_frac,
+        ),
     ]
 
     # Save to disk compressed.
     save_dir = model_id + args.scheme
     if args.output_dir is not None:
         save_dir = args.output_dir
-
+    
     oneshot(
         model=model,
         dataset=ds,
         recipe=recipe,
         max_seq_length=max_sequence_length,
         num_calibration_samples=num_calibration_samples,
-        torch_compile=True,
-        torch_compile_backend="inductor",
         output_dir=save_dir,
         save_compressed=True,
     )
