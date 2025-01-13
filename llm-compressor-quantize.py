@@ -13,6 +13,7 @@ from llmcompressor.transformers.compression.helpers import calculate_offload_dev
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # Require latest transformers and llmcompressor
+# TODO: figure out how to correctly offload tensors to CPU
 
 # Parse arguments.
 def parse_args():
@@ -92,6 +93,12 @@ def parse_args():
         action="store_true",
         help="Trust remote code for loading model and tokenizer.",
     )
+    parser.add_argument(
+        "--device_map",
+        type=str,
+        default="auto",
+        help="Device map for offloading tensors.",
+    )
     return parser.parse_args()
 
 
@@ -102,12 +109,10 @@ def main():
     max_sequence_length = args.max_sequence_length
     num_calibration_samples = args.num_calibration_samples
 
-    device_map = calculate_offload_device_map(model_id, reserve_for_hessians=True, num_gpus=args.num_gpus)
-
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        device_map=device_map,
+        device_map=args.device_map,
         low_cpu_mem_usage=True,
         torch_dtype="auto",
         trust_remote_code=args.trust_remote_code,
