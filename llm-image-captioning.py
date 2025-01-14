@@ -197,7 +197,7 @@ def __main__():
         "Describe this image, which will be used to train an image generator in natural language."
         + " The caption should be as descriptive, detailed, and specific as possible,"
         + " including people's ethnicity, gender, face, eye color, hair color,"
-        + " clothing, accessories, objects, actions, and context, camera angle, etc."
+        + " clothing, accessories, objects, actions, context and camera angle, etc."
         + " Do not mention the image itself, the caption should not start with phrases"
         + ' like "An image of", "This image", "The image" or "A photo of". %%'
     )
