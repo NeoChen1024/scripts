@@ -95,6 +95,11 @@ def parse_args():
         choices=["auto", "half", "bfloat16"],
         help="Data type to use for model weights. (Must use half on Turing GPUs)",
     )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="Enable torch.compile.",
+    )
     return parser.parse_args()
 
 
@@ -155,9 +160,13 @@ def main():
         use_bf16 = False
         use_fp16 = True
     
+    use_torch_compile = True if args.torch_compile else None
+    
     oneshot(
         bf16=use_bf16,
         fp16=use_fp16,
+        torch_compile=use_torch_compile,
+        torch_compile_backend="inductor",
         model=model,
         dataset=ds,
         recipe=recipe,
