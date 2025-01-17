@@ -109,7 +109,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        device_map=args.device_map,
+        device_map="auto",
         low_cpu_mem_usage=True,
         torch_dtype=dtype,
         trust_remote_code=args.trust_remote_code,
