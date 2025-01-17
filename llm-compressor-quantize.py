@@ -14,6 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # Require latest transformers and llmcompressor
 # TODO: figure out how to correctly offload tensors to CPU
+# TODO: make attention backend configurable
 
 # Parse arguments.
 def parse_args():
@@ -42,7 +43,7 @@ def parse_args():
     parser.add_argument(
         "--max_sequence_length",
         type=int,
-        default=4096,
+        default=2048,
         help="Maximum sequence length to use for calibration.",
     )
     parser.add_argument(
@@ -83,21 +84,16 @@ def parse_args():
         help="Prompt to use for sample generation.",
     )
     parser.add_argument(
-        "--num_gpus",
-        type=int,
-        default=1,
-        help="Number of GPUs to use for quantization",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         action="store_true",
         help="Trust remote code for loading model and tokenizer.",
     )
     parser.add_argument(
-        "--device_map",
+        "--dtype",
         type=str,
         default="auto",
-        help="Device map for offloading tensors.",
+        choices=["auto", "half", "bfloat16"],
+        help="Data type to use for model weights. (Must use half on Turing GPUs)",
     )
     return parser.parse_args()
 
@@ -108,13 +104,14 @@ def main():
     scheme = args.scheme
     max_sequence_length = args.max_sequence_length
     num_calibration_samples = args.num_calibration_samples
+    dtype = args.dtype
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         device_map=args.device_map,
         low_cpu_mem_usage=True,
-        torch_dtype="auto",
+        torch_dtype=dtype,
         trust_remote_code=args.trust_remote_code,
     )
 
@@ -149,7 +146,18 @@ def main():
     if args.output_dir is not None:
         save_dir = args.output_dir
     
+    use_bf16 = None
+    use_fp16 = None
+    if dtype == "bfloat16":
+        use_bf16 = True
+        use_fp16 = False
+    elif dtype == "half":
+        use_bf16 = False
+        use_fp16 = True
+    
     oneshot(
+        bf16=use_bf16,
+        fp16=use_fp16,
         model=model,
         dataset=ds,
         recipe=recipe,
