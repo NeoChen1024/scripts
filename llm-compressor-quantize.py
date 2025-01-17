@@ -11,6 +11,9 @@ from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
 from llmcompressor.transformers import oneshot
 from llmcompressor.transformers.compression.helpers import calculate_offload_device_map
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from torch.nn.functional import scaled_dot_product_attention
+from torch.nn.attention import SDPBackend, sdpa_kernel
+
 
 # Require latest transformers and llmcompressor
 # TODO: figure out how to correctly offload tensors to CPU
@@ -100,6 +103,13 @@ def parse_args():
         action="store_true",
         help="Enable torch.compile.",
     )
+    parser.add_argument(
+        "--attention_backend",
+        type=str,
+        default="EFFICIENT_ATTENTION",
+        choices=["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"],
+        help="Attention backend to use.",
+    )
     return parser.parse_args()
 
 
@@ -110,6 +120,9 @@ def main():
     max_sequence_length = args.max_sequence_length
     num_calibration_samples = args.num_calibration_samples
     dtype = args.dtype
+
+    # Set up attention backend.
+    attention = SDPBackend(args.attention_backend)
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
@@ -161,21 +174,24 @@ def main():
         use_fp16 = True
     
     use_torch_compile = True if args.torch_compile else None
-    
-    oneshot(
-        bf16=use_bf16,
-        fp16=use_fp16,
-        torch_compile=use_torch_compile,
-        torch_compile_backend="inductor",
-        model=model,
-        dataset=ds,
-        recipe=recipe,
-        max_seq_length=max_sequence_length,
-        num_calibration_samples=num_calibration_samples,
-        output_dir=save_dir,
-        tokenizer=tokenizer,
-        save_compressed=True,
-    )
+
+    with sdpa_kernel(attention):
+        gc.collect()
+        torch.cuda.empty_cache()
+        oneshot(
+            bf16=use_bf16,
+            fp16=use_fp16,
+            torch_compile=use_torch_compile,
+            torch_compile_backend="inductor",
+            model=model,
+            dataset=ds,
+            recipe=recipe,
+            max_seq_length=max_sequence_length,
+            num_calibration_samples=num_calibration_samples,
+            output_dir=save_dir,
+            tokenizer=tokenizer,
+            save_compressed=True,
+        )
 
     # Confirm generations of the quantized model look sane.
     print("\n\n")
