@@ -12,6 +12,7 @@ import argparse
 import shutil
 from typing import Callable
 
+
 def filename_flatten(path: str, strip_level: int = 0, delimiter: str = "_") -> str:
     path = os.path.normpath(path).split(os.sep)
     if strip_level < 0 or strip_level >= len(path):

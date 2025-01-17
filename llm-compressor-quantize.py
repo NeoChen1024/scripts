@@ -19,6 +19,7 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 # TODO: figure out how to correctly offload tensors to CPU
 # TODO: make attention backend configurable
 
+
 # Parse arguments.
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -160,10 +161,10 @@ def main():
         ]
 
     # Save to disk compressed.
-    save_dir = model_id + '-' + scheme
+    save_dir = model_id + "-" + scheme
     if args.output_dir is not None:
         save_dir = args.output_dir
-    
+
     use_bf16 = None
     use_fp16 = None
     if dtype == "bfloat16":
@@ -172,7 +173,7 @@ def main():
     elif dtype == "half":
         use_bf16 = False
         use_fp16 = True
-    
+
     use_torch_compile = True if args.torch_compile else None
 
     with sdpa_kernel(attention):
