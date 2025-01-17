@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         "--num_calibration_samples",
         type=int,
-        default=1024,
+        default=512,
         help="Number of samples to use for calibration.",
     )
     parser.add_argument(
