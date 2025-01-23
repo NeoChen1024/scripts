@@ -107,7 +107,7 @@ def parse_args():
     parser.add_argument(
         "--attention_backend",
         type=str,
-        default="EFFICIENT_ATTENTION",
+        default="FLASH_ATTENTION",
         choices=["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"],
         help="Attention backend to use.",
     )
@@ -123,7 +123,7 @@ def main():
     dtype = args.dtype
 
     # Set up attention backend.
-    attention = SDPBackend(args.attention_backend)
+    attention = getattr(SDPBackend, args.attention_backend)
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
