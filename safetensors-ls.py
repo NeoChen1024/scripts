@@ -7,24 +7,11 @@ import math
 import struct
 import sys
 
+import click
 import humanize
 from rich.console import Console
 from rich.table import Table
 from rich.traceback import install
-
-
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        description="View safetensors metadata without safetensors library"
-    )
-    parser.add_argument(
-        "file", type=str, help="Path to the safetensors file", nargs="+"
-    )
-    parser.add_argument(
-        "-j", "--json", action="store_true", help="Dump all metadata in JSON format"
-    )
-    parser.add_argument("-l", "--list", action="store_true", help="List all tensors")
-    return parser.parse_args()
 
 
 def read_header(file):
@@ -197,21 +184,26 @@ def summary(metadata, console):
     return
 
 
-def main():
+@click.command()
+@click.argument("file", nargs="+", required=True)
+@click.option(
+    "-j", "--json", "dump_json", is_flag=True, help="Dump all metadata in JSON format"
+)
+@click.option("-l", "--list", "list_tensors", is_flag=True, help="List all tensors")
+def main(file, dump_json, list_tensors):
     install(show_locals=True)
 
     console = Console()
 
-    args = arg_parser()
-    for file in args.file:
-        console.print(f"Reading [bright_magenta]{file}[/bright_magenta]")
-        metadata = read_header(file)
-        if args.json:
+    for f in file:
+        console.print(f"Reading [bright_magenta]{f}[/bright_magenta]")
+        metadata = read_header(f)
+        if dump_json:
             console.print(json.dumps(metadata, indent=4, sort_keys=False))
         else:
             print_metadata(metadata, console)
             metadata = strip_metadata(metadata)
-            if args.list:
+            if list_tensors:
                 print_tensors(metadata, console)
             summary(metadata, console)
     sys.exit(0)
