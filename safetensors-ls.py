@@ -185,7 +185,7 @@ def summary(metadata, console):
 
 
 @click.command()
-@click.argument("file", nargs="+", required=True)
+@click.argument("file", nargs=-1, required=True)
 @click.option(
     "-j", "--json", "dump_json", is_flag=True, help="Dump all metadata in JSON format"
 )
