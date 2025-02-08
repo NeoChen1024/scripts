@@ -1,21 +1,18 @@
 #!/usr/bin/env python
 import multiprocessing as mp
-from multiprocessing import Queue, Process
 import os
-from queue import Empty
 import signal
-from shutil import copy2, move
 import time
+from multiprocessing import Process, Queue
+from queue import Empty
+from shutil import copy2, move
 
 import click
 import filetype
+from accelerate import Accelerator
 from PIL import Image
 from reflink import reflink
-from transformers import pipeline
-from transformers import ViTForImageClassification
-from transformers import AutoImageProcessor
-from accelerate import Accelerator
-
+from transformers import AutoImageProcessor, ViTForImageClassification, pipeline
 
 modes = {
     "copy": copy2,
@@ -46,7 +43,7 @@ def load_image(
             # will block if the return queue is full
         except Exception as e:
             print(f"Error loading image {file_path}: {e}")
-            continue # skip to the next image
+            continue  # skip to the next image
         image_return_queue.put((file_path, img))
     print(f"Image Loader {os.getpid()} exiting")
 
@@ -84,7 +81,10 @@ def load_image(
     "--batch-size", "-b", default=16, type=int, help="Batch size for filtering images"
 )
 @click.option(
-    "--model-name", "-m", default="NeoChen1024/aesthetic-shadow-v2-backup", help="Model name"
+    "--model-name",
+    "-m",
+    default="NeoChen1024/aesthetic-shadow-v2-backup",
+    help="Model name",
 )
 @click.option("--device", "-d", help="Device to use for inference")
 @click.option("--noop", "-n", is_flag=True, help="Dry run without copying images")
@@ -181,7 +181,9 @@ def filter_images(
         while not image_return_queue.empty() or not file_path_queue.empty():
             batch = []
             return_image_file_paths = []
-            print(f"Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}")
+            print(
+                f"Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}"
+            )
             while len(batch) < batch_size:
                 try:
                     (file_path, img) = image_return_queue.get(timeout=1)
@@ -229,17 +231,23 @@ def filter_images(
     except KeyboardInterrupt:
         # TODO: find a better way to handle this
         print("Caught KeyboardInterrupt, trying to exit")
-        # Drain the input queue
-        while not file_path_queue.empty():
-            file_path_queue.get(timeout=1)  # more reliable than using non-blocking mode
+        # Drain the input queue, blocking w/timeout is more reliable than using non-blocking mode
+        while True:
+            try:
+                file_path_queue.get(timeout=1)
+            except Empty:
+                break
         print("Drained the input queue")
         # Put None to signal the image loading processes to exit
-        for _ in range(num_processes * buffer_multiplier): 
+        for _ in range(num_processes * buffer_multiplier):
             file_path_queue.put(None)
         print("Sent exit message to image loading processes")
         # Drain the return queue to ensure the image loading processes exit
-        while not image_return_queue.empty():
-            image_return_queue.get(timeout=1)
+        while True:
+            try:
+                image_return_queue.get(timeout=1)
+            except Empty:
+                break
         print("Drained the output queue to force progress")
         for p in processes:
             p.terminate()
