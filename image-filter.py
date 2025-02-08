@@ -1,14 +1,22 @@
 #!/usr/bin/env python
+import multiprocessing as mp
 import os
 from pprint import pprint as pp
-import shutil
-import multiprocessing as mp
+from shutil import copy2, move
 
 import click
 import filetype
 from PIL import Image
-from torch import mul
+from reflink import reflink
 from transformers import pipeline
+
+modes = {
+    "copy": copy2,
+    "move": move,
+    "symlink": os.symlink,
+    "hardlink": os.link,
+    "reflink": reflink,
+}
 
 
 def load_image(file_path):
@@ -63,6 +71,13 @@ def load_image(file_path):
     is_flag=True,
     help="Include HQ likeliness in the output filename",
 )
+@click.option(
+    "-m",
+    "--mode",
+    type=click.Choice(list(modes.keys())),
+    default="copy",
+    help="Choose between modes. (default: copy)",
+)
 def filter_images(
     input_dir,
     output_dir,
@@ -73,6 +88,7 @@ def filter_images(
     device="cuda",
     noop=False,
     name_sort=False,
+    mode="copy",
 ):
     pipe = pipeline(
         "image-classification",
@@ -87,6 +103,8 @@ def filter_images(
 
     if not (threshold >= 0 and threshold <= 1):
         raise ValueError("Threshold must be between 0 and 1")
+
+    file_func = modes[mode]
 
     # Get the list of image files in the input directory
     image_files = []
@@ -122,7 +140,7 @@ def filter_images(
                 filename = os.path.basename(batch[idx])
                 if name_sort:
                     filename = f"{hq_score * 1000:4.0f}_{filename}"
-                shutil.copy(
+                file_func(
                     batch[idx],
                     os.path.join(destination_folder, filename),
                 )
