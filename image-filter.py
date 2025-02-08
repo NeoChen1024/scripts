@@ -10,6 +10,8 @@ import filetype
 from PIL import Image
 from reflink import reflink
 from transformers import pipeline
+from accelerate import Accelerator
+
 
 modes = {
     "copy": copy2,
@@ -77,7 +79,7 @@ def load_image(
 @click.option(
     "--model", "-m", default="NeoChen1024/aesthetic-shadow-v2-backup", help="Model name"
 )
-@click.option("--device", "-d", default="cuda", help="Device to use for inference")
+@click.option("--device", "-d", help="Device to use for inference")
 @click.option("--noop", "-n", is_flag=True, help="Dry run without copying images")
 @click.option(
     "--name-sort",
@@ -99,16 +101,20 @@ def filter_images(
     threshold=0.5,
     batch_size=8,
     model="NeoChen1024/aesthetic-shadow-v2-backup",
-    device="cuda",
+    device=None,
     noop=False,
     name_sort=False,
     mode="copy",
 ):
+    accelerator = Accelerator()
+    actual_device = accelerator.device
+    if device is not None:
+        actual_device = device
     pipe = pipeline(
         "image-classification",
         use_fast=True,
         model=model,
-        device=device,
+        device=actual_device,
     )
     if not noop:
         # Create the output directories if they don't exist
@@ -146,7 +152,8 @@ def filter_images(
     while not image_return_queue.empty() or not file_path_queue.empty():
         batch = []
         return_image_file_paths = []
-        for _ in range(batch_size):
+        print(f"Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}")
+        while len(batch) < batch_size:
             if not image_return_queue.empty():
                 (file_path, img) = image_return_queue.get()
                 batch.append(img)
@@ -155,28 +162,28 @@ def filter_images(
                 continue
             else:
                 break
+        print("Actual loaded batch size", len(batch))
 
         # Perform classification for the batch
         results = pipe(images=batch)
 
         for idx, result in enumerate(results):
+            bn = os.path.basename(return_image_file_paths[idx])
             # Extract the prediction scores and labels
             predictions = result
-            print(f">> {return_image_file_paths[idx]}")
-            pp(predictions)
 
             # Determine the destination folder based on the prediction and threshold
             hq_score = [p for p in predictions if p["label"] == "hq"][0]["score"]
             destination_folder = output_dir if hq_score >= threshold else rejected_dir
 
+            print(f"[{hq_score:0.3f}] {bn}")
             # Copy the image to the appropriate folder
             if not noop:
-                filename = os.path.basename(return_image_file_paths[idx])
                 if name_sort:
-                    filename = f"{hq_score * 1000:4.0f}_{filename}"
+                    bn = f"{hq_score * 1000:4.0f}_{bn}"
                 file_func(
                     batch[idx],
-                    os.path.join(destination_folder, filename),
+                    os.path.join(destination_folder, bn),
                 )
                 print(f"{mode} {batch[idx]} to {destination_folder}")
 
