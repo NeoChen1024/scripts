@@ -9,6 +9,8 @@ import filetype
 from PIL import Image
 from reflink import reflink
 from transformers import pipeline
+from transformers import ViTForImageClassification
+from transformers import AutoImageProcessor
 from accelerate import Accelerator
 
 
@@ -31,12 +33,15 @@ def load_image(
         file_path = file_path_queue.get()
         if file_path is None:  # exit signal
             break
-        img = Image.open(file_path)
-        img.convert("RGB")  # force it to load into memory
-        # resize to fit into 1024x1024, greatly speeds up processing
-        if img.width > 1024 or img.height > 1024:
+        try:
+            img = Image.open(file_path)
+            img.convert("RGB")  # force it to load into memory
+            # resize to fit into 1024x1024, greatly speeds up processing
             img.thumbnail((1024, 1024))
-        # will block if the return queue is full
+            # will block if the return queue is full
+        except Exception as e:
+            print(f"Error loading image {file_path}: {e}")
+            continue # skip to the next image
         image_return_queue.put((file_path, img))
     print(f"Image Loader {os.getpid()} exiting")
 
@@ -74,7 +79,7 @@ def load_image(
     "--batch-size", "-b", default=16, type=int, help="Batch size for filtering images"
 )
 @click.option(
-    "--model", "-m", default="NeoChen1024/aesthetic-shadow-v2-backup", help="Model name"
+    "--model-name", "-m", default="NeoChen1024/aesthetic-shadow-v2-backup", help="Model name"
 )
 @click.option("--device", "-d", help="Device to use for inference")
 @click.option("--noop", "-n", is_flag=True, help="Dry run without copying images")
@@ -95,9 +100,9 @@ def filter_images(
     input_dir,
     output_dir,
     rejected_dir,
-    threshold=0.5,
-    batch_size=8,
-    model="NeoChen1024/aesthetic-shadow-v2-backup",
+    threshold=0.75,
+    batch_size=16,
+    model_name="NeoChen1024/aesthetic-shadow-v2-backup",
     device=None,
     noop=False,
     name_sort=False,
@@ -108,10 +113,16 @@ def filter_images(
         actual_device = accelerator.device
         if device is not None:
             actual_device = device
+        model = ViTForImageClassification.from_pretrained(
+            model_name,
+            attn_implementation="sdpa",
+        )
+        processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
         pipe = pipeline(
             "image-classification",
             use_fast=True,
             model=model,
+            image_processor=processor,
             device=actual_device,
             batch_size=batch_size,
         )
@@ -167,7 +178,8 @@ def filter_images(
             results = pipe(images=batch)
 
             for idx, result in enumerate(results):
-                bn = os.path.basename(return_image_file_paths[idx])
+                input_image_path = return_image_file_paths[idx]
+                bn = os.path.basename(input_image_path)
                 # Extract the prediction scores and labels
                 predictions = result
 
@@ -181,10 +193,10 @@ def filter_images(
                     if name_sort:
                         bn = f"{hq_score * 1000:4.0f}_{bn}"
                     file_func(
-                        batch[idx],
+                        input_image_path,
                         os.path.join(destination_folder, bn),
                     )
-                    print(f"{mode} {batch[idx]} to {destination_folder}")
+                    print(f"{mode} {input_image_path} -> {destination_folder}")
 
         # Send exit signal to the image loading processes
         for _ in range(num_processes * 2):
