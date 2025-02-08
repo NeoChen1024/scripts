@@ -4,6 +4,7 @@ from multiprocessing import Queue, Process
 import os
 import signal
 from shutil import copy2, move
+import time
 
 import click
 import filetype
@@ -99,6 +100,12 @@ def load_image(
     default="copy",
     help="Choose between modes. (default: copy)",
 )
+@click.option(
+    "--backoff",
+    default=0.5,
+    type=float,
+    help="Backoff time in seconds before retrying to load a batch of images",
+)
 def filter_images(
     input_dir,
     output_dir,
@@ -110,6 +117,7 @@ def filter_images(
     noop=False,
     name_sort=False,
     mode="copy",
+    backoff=0.5,
 ):
     try:
         accelerator = Accelerator()
@@ -172,7 +180,8 @@ def filter_images(
                     batch.append(img)
                     return_image_file_paths.append(file_path)
                 elif not file_path_queue.empty():
-                    print("Image queue empty, busy waiting for more images...")
+                    print("Image queue empty, waiting for more images...")
+                    time.sleep(backoff)
                     continue
                 else:
                     break
