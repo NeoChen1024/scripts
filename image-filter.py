@@ -182,8 +182,9 @@ def filter_images(
             batch = []
             return_image_file_paths = []
             print(
-                f"Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}"
+                f"> Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}"
             )
+            print(f"> Image queue size: {file_path_queue.qsize()}")
             while len(batch) < batch_size:
                 try:
                     (file_path, img) = image_return_queue.get(timeout=1)
@@ -196,7 +197,7 @@ def filter_images(
                         continue
                     else:
                         break
-            print("Actual loaded batch size", len(batch))
+            print("> Actual loaded batch size", len(batch))
 
             # Perform classification for the batch
             results = pipe(images=batch)
