@@ -228,7 +228,7 @@ def filter_images(
             p.terminate()
         print("Terminated all image loading processes")
         for p in processes:
-            p.join()
+            p.join(1)
         print("Exiting")
 
 
