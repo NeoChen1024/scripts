@@ -57,6 +57,12 @@ def load_image(file_path):
 )
 @click.option("--device", "-d", default="cuda", help="Device to use for inference")
 @click.option("--noop", "-n", is_flag=True, help="Dry run without copying images")
+@click.option(
+    "--name-sort",
+    "-s",
+    is_flag=True,
+    help="Include HQ likeliness in the output filename",
+)
 def filter_images(
     input_dir,
     output_dir,
@@ -66,6 +72,7 @@ def filter_images(
     model="NeoChen1024/aesthetic-shadow-v2-backup",
     device="cuda",
     noop=False,
+    name_sort=False,
 ):
     pipe = pipeline(
         "image-classification",
@@ -112,9 +119,12 @@ def filter_images(
 
             # Copy the image to the appropriate folder
             if not noop:
+                filename = os.path.basename(batch[idx])
+                if name_sort:
+                    filename = f"{hq_score * 1000:4.0f}_{filename}"
                 shutil.copy(
                     batch[idx],
-                    os.path.join(destination_folder, os.path.basename(batch[idx])),
+                    os.path.join(destination_folder, filename),
                 )
                 print(f"Image {batch[idx]} copied to {destination_folder}")
 
