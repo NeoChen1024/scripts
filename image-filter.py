@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import multiprocessing as mp
+from multiprocessing import JoinableQueue, Queue, Process
 import os
 from pprint import pprint as pp
 from shutil import copy2, move
@@ -19,13 +20,26 @@ modes = {
 }
 
 
-def load_image(file_path):
-    i = Image.open(file_path)
-    i.convert("RGB")  # force it to load into memory
-    # resize to fit into 1024x1024, greatly speeds up processing
-    if i.width > 1024 or i.height > 1024:
-        i.thumbnail((1024, 1024))
-    return i
+# Process Image
+def load_image(
+    file_path_queue: JoinableQueue,
+    image_return_queue: Queue,
+):
+    print(f"Image Loader {os.getpid()} started")
+    while True:
+        file_path = file_path_queue.get()
+        if file_path is None:  # exit signal
+            break
+        img = Image.open(file_path)
+        img.convert("RGB")  # force it to load into memory
+        # resize to fit into 1024x1024, greatly speeds up processing
+        if img.width > 1024 or img.height > 1024:
+            img.thumbnail((1024, 1024))
+        # will block if the return queue is full
+        image_return_queue.put((file_path, img))
+        # TODO: figure out whether this will cause deadlock or not
+        file_path_queue.task_done()
+    print(f"Image Loader {os.getpid()} exiting")
 
 
 @click.command(help="Filter images using a pre-trained ViT model")
@@ -53,12 +67,12 @@ def load_image(file_path):
 @click.option(
     "--threshold",
     "-t",
-    default=0.7,
+    default=0.75,
     type=click.FloatRange(0, 1, clamp=True),
     help="Threshold for filtering images (0-1)",
 )
 @click.option(
-    "--batch-size", "-b", default=8, type=int, help="Batch size for filtering images"
+    "--batch-size", "-b", default=16, type=int, help="Batch size for filtering images"
 )
 @click.option(
     "--model", "-m", default="NeoChen1024/aesthetic-shadow-v2-backup", help="Model name"
@@ -106,29 +120,49 @@ def filter_images(
 
     file_func = modes[mode]
 
-    # Get the list of image files in the input directory
-    image_files = []
+    file_path_queue = JoinableQueue()
+    image_return_queue = Queue(maxsize=batch_size * 2)
+    # Launch the image loading processes
+    num_processes = min(mp.cpu_count(), batch_size)
+    processes = []
+    for i in range(num_processes):
+        p = Process(
+            name=f"image_loader_{i}",
+            daemon=True,
+            target=load_image,
+            args=(file_path_queue, image_return_queue),
+        )
+        p.start()
+        processes.append(p)
+
+    # Load all image file paths
     for root, _, files in os.walk(input_dir):
         for file in files:
             file_path = os.path.join(root, file)
             if filetype.is_image(file_path):
-                image_files.append(file_path)
+                file_path_queue.put(file_path)
 
     # Process images in batches
-    for i in range(0, len(image_files), batch_size):
-        batch = image_files[i : i + batch_size]
-        image_batch = []
-        # use multiprocessing to load images in parallel
-        with mp.Pool() as pool:
-            image_batch = pool.map(load_image, batch)
+    while not image_return_queue.empty() or not file_path_queue.empty():
+        batch = []
+        return_image_file_paths = []
+        for _ in range(batch_size):
+            if not image_return_queue.empty():
+                (file_path, img) = image_return_queue.get()
+                batch.append(img)
+                return_image_file_paths.append(file_path)
+            elif not file_path_queue.empty():
+                continue
+            else:
+                break
 
         # Perform classification for the batch
-        results = pipe(images=image_batch)
+        results = pipe(images=batch)
 
         for idx, result in enumerate(results):
             # Extract the prediction scores and labels
             predictions = result
-            print(f">> {batch[idx]}")
+            print(f">> {return_image_file_paths[idx]}")
             pp(predictions)
 
             # Determine the destination folder based on the prediction and threshold
@@ -137,7 +171,7 @@ def filter_images(
 
             # Copy the image to the appropriate folder
             if not noop:
-                filename = os.path.basename(batch[idx])
+                filename = os.path.basename(return_image_file_paths[idx])
                 if name_sort:
                     filename = f"{hq_score * 1000:4.0f}_{filename}"
                 file_func(
@@ -146,6 +180,11 @@ def filter_images(
                 )
                 print(f"{mode} {batch[idx]} to {destination_folder}")
 
+    # Send exit signal to the image loading processes
+    for _ in range(num_processes * 2):
+        file_path_queue.put(None)
+    for p in processes:
+        p.join()
     print("All images processed")
 
 
