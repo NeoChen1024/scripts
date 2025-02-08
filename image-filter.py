@@ -144,7 +144,7 @@ def filter_images(
                     batch[idx],
                     os.path.join(destination_folder, filename),
                 )
-                print(f"Image {batch[idx]} copied to {destination_folder}")
+                print(f"{mode} {batch[idx]} to {destination_folder}")
 
     print("All images processed")
 
