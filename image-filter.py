@@ -2,6 +2,7 @@
 import multiprocessing as mp
 from multiprocessing import Queue, Process
 import os
+import signal
 from shutil import copy2, move
 
 import click
@@ -28,6 +29,8 @@ def load_image(
     file_path_queue: Queue,
     image_return_queue: Queue,
 ):
+    # ignore SIGINT in the child process
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     print(f"Image Loader {os.getpid()} started")
     while True:
         file_path = file_path_queue.get()
@@ -208,26 +211,25 @@ def filter_images(
 
     except KeyboardInterrupt:
         # TODO: find a better way to handle this
-        print("Caught KeyboardInterrupt, exiting")
+        print("Caught KeyboardInterrupt, trying to exit")
         # Drain the input queue
-        for _ in range(file_path_queue.qsize()):
-            try:
-                file_path_queue.get_nowait()
-            except mp.queues.Empty:
-                pass
+        while not file_path_queue.empty():
+            file_path_queue.get()
+        print("Drained the input queue")
         # Put None to signal the image loading processes to exit
-        for _ in range(num_processes * 2): 
+        for _ in range(num_processes): 
             file_path_queue.put(None)
+        print("Sent exit message to image loading processes")
         # Drain the return queue to ensure the image loading processes exit
-        for _ in range(image_return_queue.qsize()):
-            try:
-                image_return_queue.get_nowait()
-            except mp.queues.Empty:
-                pass
+        while not image_return_queue.empty():
+            image_return_queue.get()
+        print("Drained the output queue to force progress")
         for p in processes:
             p.terminate()
+        print("Terminated all image loading processes")
         for p in processes:
             p.join()
+        print("Exiting")
 
 
 if __name__ == "__main__":
