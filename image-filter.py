@@ -196,20 +196,19 @@ def filter_images(
                 # Extract the prediction scores and labels
                 predictions = result
 
-                # Determine the destination folder based on the prediction and threshold
+                # Determine the destination dir based on the prediction and threshold
                 hq_score = [p for p in predictions if p["label"] == "hq"][0]["score"]
-                destination_folder = output_dir if hq_score >= threshold else rejected_dir
+                destination_dir = output_dir if hq_score >= threshold else rejected_dir
 
                 print(f"[{hq_score:0.3f}] {bn}")
-                # Copy the image to the appropriate folder
                 if not noop:
                     if name_sort:
                         bn = f"{hq_score * 1000:4.0f}_{bn}"
                     file_func(
                         input_image_path,
-                        os.path.join(destination_folder, bn),
+                        os.path.join(destination_dir, bn),
                     )
-                    print(f"{mode} {input_image_path} -> {destination_folder}")
+                    print(f"{mode} {input_image_path} -> {destination_dir}")
 
         # Send exit signal to the image loading processes
         for _ in range(num_processes * 2):
