@@ -169,6 +169,7 @@ def filter_images(
                     batch.append(img)
                     return_image_file_paths.append(file_path)
                 elif not file_path_queue.empty():
+                    print("Image queue empty, busy waiting for more images...")
                     continue
                 else:
                     break
