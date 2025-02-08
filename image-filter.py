@@ -22,14 +22,23 @@ def load_image(file_path):
 
 @click.command(help="Filter images using a pre-trained ViT model")
 @click.option(
-    "--input-dir", "-i", required=True, help="Input directory containing images"
+    "--input-dir",
+    "-i",
+    required=True,
+    type=click.Path(dir_okay=True, file_okay=False, readable=True),
+    help="Input directory containing images",
 )
 @click.option(
-    "--output-dir", "-o", required=True, help="Output directory to save filtered images"
+    "--output-dir",
+    "-o",
+    required=True,
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
+    help="Output directory to save filtered images",
 )
 @click.option(
     "--rejected-dir",
     "-r",
+    type=click.Path(dir_okay=True, file_okay=False, writable=True),
     required=True,
     help="Output directory to save rejected images",
 )
@@ -64,9 +73,10 @@ def filter_images(
         model=model,
         device=device,
     )
-    # Create the output directories if they don't exist
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(rejected_dir, exist_ok=True)
+    if not noop:
+        # Create the output directories if they don't exist
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(rejected_dir, exist_ok=True)
 
     if not (threshold >= 0 and threshold <= 1):
         raise ValueError("Threshold must be between 0 and 1")
@@ -93,14 +103,12 @@ def filter_images(
         for idx, result in enumerate(results):
             # Extract the prediction scores and labels
             predictions = result
-            print("Predictions:")
+            print(f">> {batch[idx]}")
             pp(predictions)
 
             # Determine the destination folder based on the prediction and threshold
             hq_score = [p for p in predictions if p["label"] == "hq"][0]["score"]
-            destination_folder = (
-                output_dir if hq_score >= threshold else rejected_dir
-            )
+            destination_folder = output_dir if hq_score >= threshold else rejected_dir
 
             # Copy the image to the appropriate folder
             if not noop:
@@ -110,7 +118,7 @@ def filter_images(
                 )
                 print(f"Image {batch[idx]} copied to {destination_folder}")
 
-    print("Classification and sorting complete.")
+    print("All images processed")
 
 
 if __name__ == "__main__":
