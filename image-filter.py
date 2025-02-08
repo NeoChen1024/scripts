@@ -2,6 +2,7 @@
 import multiprocessing as mp
 from multiprocessing import Queue, Process
 import os
+from queue import Empty
 import signal
 from shutil import copy2, move
 import time
@@ -106,6 +107,12 @@ def load_image(
     type=float,
     help="Backoff time in seconds before retrying to load a batch of images",
 )
+@click.option(
+    "--buffer-multiplier",
+    default=2,
+    type=int,
+    help="Multiplier for the image buffer size",
+)
 def filter_images(
     input_dir,
     output_dir,
@@ -118,6 +125,7 @@ def filter_images(
     name_sort=False,
     mode="copy",
     backoff=0.5,
+    buffer_multiplier=2,
 ):
     try:
         accelerator = Accelerator()
@@ -148,7 +156,7 @@ def filter_images(
         file_func = modes[mode]
 
         file_path_queue = Queue()
-        image_return_queue = Queue(maxsize=batch_size * 2)
+        image_return_queue = Queue(maxsize=batch_size * buffer_multiplier)
         # Launch the image loading processes
         num_processes = min(mp.cpu_count(), batch_size)
         processes = []
@@ -175,16 +183,17 @@ def filter_images(
             return_image_file_paths = []
             print(f"Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}")
             while len(batch) < batch_size:
-                if not image_return_queue.empty():
-                    (file_path, img) = image_return_queue.get()
+                try:
+                    (file_path, img) = image_return_queue.get(timeout=1)
                     batch.append(img)
                     return_image_file_paths.append(file_path)
-                elif not file_path_queue.empty():
-                    print("Image queue empty, waiting for more images...")
-                    time.sleep(backoff)
-                    continue
-                else:
-                    break
+                except Empty:
+                    if not file_path_queue.empty():
+                        print("Image queue empty, waiting for more images...")
+                        time.sleep(backoff)
+                        continue
+                    else:
+                        break
             print("Actual loaded batch size", len(batch))
 
             # Perform classification for the batch
@@ -211,7 +220,7 @@ def filter_images(
                     print(f"{mode} {input_image_path} -> {destination_dir}")
 
         # Send exit signal to the image loading processes
-        for _ in range(num_processes * 2):
+        for _ in range(num_processes * buffer_multiplier):
             file_path_queue.put(None)
         for p in processes:
             p.join()
@@ -222,15 +231,15 @@ def filter_images(
         print("Caught KeyboardInterrupt, trying to exit")
         # Drain the input queue
         while not file_path_queue.empty():
-            file_path_queue.get()
+            file_path_queue.get(timeout=1)  # more reliable than using non-blocking mode
         print("Drained the input queue")
         # Put None to signal the image loading processes to exit
-        for _ in range(num_processes): 
+        for _ in range(num_processes * buffer_multiplier): 
             file_path_queue.put(None)
         print("Sent exit message to image loading processes")
         # Drain the return queue to ensure the image loading processes exit
         while not image_return_queue.empty():
-            image_return_queue.get()
+            image_return_queue.get(timeout=1)
         print("Drained the output queue to force progress")
         for p in processes:
             p.terminate()
