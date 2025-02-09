@@ -7,7 +7,7 @@ from typing import List
 import click
 import filetype
 from accelerate import Accelerator
-from PIL import Image
+from PIL import Image, ImageOps
 from reflink import reflink
 import torch
 from torch.utils.data import Dataset
@@ -35,8 +35,11 @@ class ImageDatasetLoader(Dataset):
         image_path = self.image_paths[idx]
         try:
             img = Image.open(image_path)
+            img = ImageOps.exif_transpose(img)
             img.convert("RGB")
-            img.thumbnail((1024, 1024))
+            img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+            # Pad to ensure the image is 1024x1024
+            img = ImageOps.pad(img, (1024, 1024), color="black")
             return (img, image_path)
         except Exception as e:
             print(f"Error loading image {image_path}: {e}")
@@ -173,6 +176,12 @@ def filter_images(
             for imgs, paths in batch:
                 batch_images.append(imgs)
                 original_image_path.append(paths)
+# TODO: find a way to silence this warning by pipeline:
+# "You seem to be using the pipelines sequentially on GPU. In order to maximize efficiency please use a dataset"
+# NOTE: It's still using DataLoader internally, there's no difference.
+# Then there's no way to pass a DataLoader to the pipeline, nor a collate_fn.
+# Letting it load data by itself is a bad idea too, as there can be errors in loading images, and
+# we need a reliable way to preserve the input image paths.
             result = pipe(batch_images)
             for result, image_path in zip(result, original_image_path):
                 bn = os.path.basename(image_path)
