@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 import multiprocessing as mp
 import os
-import signal
-import time
-from multiprocessing import Process, Queue
-from queue import Empty
 from shutil import copy2, move
+from typing import List
 
 import click
 import filetype
 from accelerate import Accelerator
 from PIL import Image
 from reflink import reflink
+import torch
+from torch.utils.data import Dataset
+from tqdm.auto import tqdm
 from transformers import AutoImageProcessor, ViTForImageClassification, pipeline
 
 modes = {
@@ -22,32 +22,31 @@ modes = {
     "reflink": reflink,
 }
 
+class ImageDatasetLoader(Dataset):
+    image_paths: List[str]
+    
+    def __init__(self, image_paths: List[str]):
+        self.image_paths = image_paths
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx: int):
+        image_path = self.image_paths[idx]
+        try:
+            img = Image.open(image_path)
+            img.convert("RGB")
+            img.thumbnail((1024, 1024))
+            return (img, image_path)
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
+            return None
+
+def collate_fn(batch):
+    batch = [x for x in batch if x is not None]
+    return batch
 
 # Process Image
-def load_image(
-    file_path_queue: Queue,
-    image_return_queue: Queue,
-):
-    # ignore SIGINT in the child process
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    print(f"Image Loader {os.getpid()} started")
-    while True:
-        file_path = file_path_queue.get()
-        if file_path is None:  # exit signal
-            break
-        try:
-            img = Image.open(file_path)
-            img.convert("RGB")  # force it to load into memory
-            # resize to fit into 1024x1024, greatly speeds up processing
-            img.thumbnail((1024, 1024))
-            # will block if the return queue is full
-        except Exception as e:
-            print(f"Error loading image {file_path}: {e}")
-            continue  # skip to the next image
-        image_return_queue.put((file_path, img))
-    print(f"Image Loader {os.getpid()} exiting")
-
-
 @click.command(help="Filter images using a pre-trained ViT model")
 @click.option(
     "--input-dir",
@@ -102,12 +101,6 @@ def load_image(
     help="Choose between modes. (default: copy)",
 )
 @click.option(
-    "--backoff",
-    default=0.5,
-    type=float,
-    help="Backoff time in seconds before retrying to load a batch of images",
-)
-@click.option(
     "--buffer-multiplier",
     default=2,
     type=int,
@@ -124,7 +117,6 @@ def filter_images(
     noop=False,
     name_sort=False,
     mode="copy",
-    backoff=0.5,
     buffer_multiplier=2,
 ):
     try:
@@ -155,56 +147,35 @@ def filter_images(
 
         file_func = modes[mode]
 
-        file_path_queue = Queue()
-        image_return_queue = Queue(maxsize=batch_size * buffer_multiplier)
-        # Launch the image loading processes
         num_processes = min(mp.cpu_count(), batch_size)
-        processes = []
-        for i in range(num_processes):
-            p = Process(
-                name=f"image_loader_{i}",
-                daemon=True,
-                target=load_image,
-                args=(file_path_queue, image_return_queue),
-            )
-            p.start()
-            processes.append(p)
+
+        image_file_paths = []
 
         # Load all image file paths
         for root, _, files in os.walk(input_dir):
             for file in files:
                 file_path = os.path.join(root, file)
                 if filetype.is_image(file_path):
-                    file_path_queue.put(file_path)
+                    image_file_paths.append(file_path)
+
+        data = torch.utils.data.DataLoader(
+            ImageDatasetLoader(image_file_paths),
+            batch_size=batch_size,
+            collate_fn=collate_fn,
+            num_workers=num_processes,
+            prefetch_factor=buffer_multiplier,
+        )
 
         # Process images in batches
-        while not image_return_queue.empty() or not file_path_queue.empty():
-            batch = []
-            return_image_file_paths = []
-            print(
-                f"> Processing batch, available / batch size = {image_return_queue.qsize()} / {batch_size}"
-            )
-            print(f"> Image queue size: {file_path_queue.qsize()}")
-            while len(batch) < batch_size:
-                try:
-                    (file_path, img) = image_return_queue.get(timeout=1)
-                    batch.append(img)
-                    return_image_file_paths.append(file_path)
-                except Empty:
-                    if not file_path_queue.empty():
-                        print("Image queue empty, waiting for more images...")
-                        time.sleep(backoff)
-                        continue
-                    else:
-                        break
-            print("> Actual loaded batch size", len(batch))
-
-            # Perform classification for the batch
-            results = pipe(images=batch)
-
-            for idx, result in enumerate(results):
-                input_image_path = return_image_file_paths[idx]
-                bn = os.path.basename(input_image_path)
+        t = tqdm(data, total=len(data), smoothing=0)
+        for batch in t:
+            batch_images, original_image_path = [], []
+            for imgs, paths in batch:
+                batch_images.append(imgs)
+                original_image_path.append(paths)
+            result = pipe(batch_images)
+            for result, image_path in zip(result, original_image_path):
+                bn = os.path.basename(image_path)
                 # Extract the prediction scores and labels
                 predictions = result
 
@@ -212,50 +183,18 @@ def filter_images(
                 hq_score = [p for p in predictions if p["label"] == "hq"][0]["score"]
                 destination_dir = output_dir if hq_score >= threshold else rejected_dir
 
-                print(f"[{hq_score:0.3f}] {bn}")
+                t.write(f"[{hq_score:0.3f}] {bn}")
                 if not noop:
                     if name_sort:
                         bn = f"{hq_score * 1000:4.0f}_{bn}"
                     file_func(
-                        input_image_path,
+                        image_path,
                         os.path.join(destination_dir, bn),
                     )
-                    print(f"{mode} {input_image_path} -> {destination_dir}")
-
-        # Send exit signal to the image loading processes
-        for _ in range(num_processes * buffer_multiplier):
-            file_path_queue.put(None)
-        for p in processes:
-            p.join()
-        print("All images processed")
-
-    except KeyboardInterrupt:
-        # TODO: find a better way to handle this
-        print("Caught KeyboardInterrupt, trying to exit")
-        # Drain the input queue, blocking w/timeout is more reliable than using non-blocking mode
-        while True:
-            try:
-                file_path_queue.get(timeout=1)
-            except Empty:
-                break
-        print("Drained the input queue")
-        # Put None to signal the image loading processes to exit
-        for _ in range(num_processes * buffer_multiplier):
-            file_path_queue.put(None)
-        print("Sent exit message to image loading processes")
-        # Drain the return queue to ensure the image loading processes exit
-        while True:
-            try:
-                image_return_queue.get(timeout=1)
-            except Empty:
-                break
-        print("Drained the output queue to force progress")
-        for p in processes:
-            p.terminate()
-        print("Terminated all image loading processes")
-        for p in processes:
-            p.join(1)
-        print("Exiting")
+                    t.write(f"{mode} {image_path} -> {destination_dir}")
+        return
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":
