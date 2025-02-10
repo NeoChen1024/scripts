@@ -10,3 +10,4 @@ filetype
 reflink
 accelerate
 torchvision
+tqdm
