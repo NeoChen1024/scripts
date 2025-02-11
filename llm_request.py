@@ -200,9 +200,10 @@ def llm_query(
 def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) -> None:
     # Import rich for better console output
     from rich.console import Console
-
+    from rich.pretty import pprint
     console = Console()
     print = console.print  # override print function
+    prompt = console.input  # override input function
 
     client, model_name = init_llm_api(api_key, model, base_url)
     actual_url = client.base_url
@@ -224,26 +225,33 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
 
         history = []
         while True:
-            user_input = click.prompt("> ", prompt_suffix="")
+            user_input = prompt("[white on blue]>>[/] ")
             if user_input == "/exit" or user_input == "/quit":
                 break
             elif user_input == "/reset":
                 history = []
                 print("Chat history cleared")
+                continue
             elif user_input == "/system":
-                system_message = click.prompt("Enter system message: ")
+                system_message = prompt("Enter system message")
                 history.append({"role": "system", "content": system_message})
                 print("System message added")
+                continue
             elif user_input == "/image":
-                image_path = click.prompt("Enter image path: ")
-                user_input = click.prompt("Enter optional message: ")
+                image_path = prompt("Enter image path")
+                user_input = prompt("Enter optional message")
                 image = Image.open(image_path)
                 if user_input:
                     history = add_user_message(history, str(user_input), image)
                 else:
                     history = add_user_message(history, image)
                 print("Image message added")
-            else:
+                # There's no continue here because we want to send the image / text now
+            elif user_input == "/history":
+                pprint(history, max_string=256)  # pretty print the history
+                continue
+
+            with console.status("[bold green]Waiting for response...", spinner="line"):
                 response, history = llm_query(
                     client,
                     model_name,
@@ -252,7 +260,7 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-                print(response)
+            print(response)
 
     return
 
