@@ -225,43 +225,44 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
 
         history = []
         while True:
-            user_input = prompt("[white on blue]>>[/] ")
-            if user_input == "/exit" or user_input == "/quit":
-                break
-            elif user_input == "/reset":
-                history = []
-                print("Chat history cleared")
-                continue
-            elif user_input == "/system":
-                system_message = prompt("Enter system message")
-                history.append({"role": "system", "content": system_message})
-                print("System message added")
-                continue
-            elif user_input == "/image":
-                image_path = prompt("Enter image path")
-                user_input = prompt("Enter optional message")
-                image = Image.open(image_path)
-                if user_input:
+            try:
+                user_input = prompt("[white on blue]>>[/] ")
+                if user_input == "/exit" or user_input == "/quit":
+                    break
+                elif user_input == "/reset":
+                    history = []
+                    print("Chat history cleared")
+                    continue
+                elif user_input == "/system":
+                    system_message = prompt("Enter system message: ")
+                    history.append({"role": "system", "content": system_message})
+                    print("System message added")
+                    continue
+                elif user_input == "/history":
+                    pprint(history, max_string=256)  # pretty print the history
+                    continue
+                elif user_input == "/image":
+                    image_path = prompt("Enter image path: ")
+                    user_input = prompt("Enter optional message: ")
+                    image = Image.open(image_path)
                     history = add_user_message(history, str(user_input), image)
-                else:
-                    history = add_user_message(history, image)
-                print("Image message added")
-                # There's no continue here because we want to send the image / text now
-            elif user_input == "/history":
-                pprint(history, max_string=256)  # pretty print the history
-                continue
+                    print("Image message added")
+                    user_input = None # ugly hack to prevent the text from being sent twice
+                    # There's no continue here because we want to send the image / text now
 
-            with console.status("[bold green]Waiting for response...", spinner="line"):
-                response, history = llm_query(
-                    client,
-                    model_name,
-                    user_input,
-                    history=history,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            print(response)
-
+                with console.status("[bold green]Waiting for response...", spinner="line"):
+                    response, history = llm_query(
+                        client,
+                        model_name,
+                        user_input,
+                        history=history,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                print(response, style="green")
+            except Exception as e:
+                print(f"Error: {e}")
+                pass
     return
 
 
