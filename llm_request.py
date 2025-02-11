@@ -11,7 +11,11 @@ from PIL import Image
 import click
 from openai import OpenAI
 from pydantic import BaseModel
+from rich.console import Console
+from rich.pretty import pprint
+from rich import print
 
+console = Console()
 
 def init_llm_api(
     key: Optional[str] = None,
@@ -116,6 +120,7 @@ def llm_query(
     max_tokens: Optional[int] = None,
     history: Optional[List[dict]] = None,
     format: Optional[BaseModel] = None,
+    refusal_is_error: Optional[bool] = False,
 ) -> Tuple[str | BaseModel, list]:
     messages = []
     if history is not None:
@@ -138,9 +143,6 @@ def llm_query(
             messages=messages,
             **kwargs,
         )
-        refusal = chat_response.choices[0].message.refusal
-        if refusal is not None:
-            return refusal, history
         response_text = chat_response.choices[0].message.content
         return response_text, _append_assistant(messages, response_text)
     else:
@@ -154,8 +156,11 @@ def llm_query(
         # if refused, return the error message
         refusal = completion.choices[0].message.get("refusal")
         if refusal is not None:
+            if refusal_is_error:
+                raise ValueError("Refusal occurred: " + refusal)
+            console.log("Refusal occurred: " + refusal)
+            console.log("History: ", history)
             return refusal, history
-
         response = completion.choices[0].message.parsed
         response_json = response.model_dump_json()
         return response, _append_assistant(messages, response_json)
@@ -198,10 +203,6 @@ def llm_query(
     required=False,
 )
 def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) -> None:
-    # Import rich for better console output
-    from rich.console import Console
-    from rich.pretty import pprint
-    console = Console()
     print = console.print  # override print function
     prompt = console.input  # override input function
 
