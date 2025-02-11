@@ -3,7 +3,7 @@
 
 from email.mime import base
 import os
-from typing import Callable, Optional, Tuple, List, overload
+from typing import Optional, Tuple, List
 import base64
 from io import BytesIO
 
@@ -63,52 +63,38 @@ def image_to_jpeg_base64(
     return base64.b64encode(image_jpeg.getvalue()).decode("utf-8")
 
 
-# for text-only completions
 # NOTE: modifies the messages list in place
-@overload
-def add_user_message(messages: List[dict], message_input: str) -> List[dict]:
-    messages.append({"role": "user", "content": message_input})
-    return messages
-
-
-@overload
 def add_user_message(
-    messages: List[dict], message_input: str, image: Image, **kwargs
+    messages: List[dict], message_input: Optional[str] = None, image: Optional[Image.Image] = None, **kwargs
 ) -> List[dict]:
+    content_list = []
+    
+    if message_input is not None:
+        content_list.append({"type": "text", "text": message_input})
+    
+    if image is not None:
+        content_list.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
+            },
+        })
     new_message = {
         "role": "user",
-        "content": [
-            {"type": "text", "text": message_input},
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
-                },
-            },
-        ],
+        "content": content_list,
     }
     messages.append(new_message)
     return messages
 
 
-# NOTE: Some APIs (like Gemini) doesn't like image-only messages
-@overload
-def add_user_message(messages: List[dict], image: Image, **kwargs) -> List[dict]:
-    new_message = {
-        "role": "user",
-        "content": [
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
-                },
-            },
-        ],
-    }
-    messages.append(new_message)
+# NOTE: modifies the messages list in place
+def del_last_message(messages: List[dict]) -> List[dict]:
+    if messages:
+        messages.pop()
     return messages
 
 
+# NOTE: modifies the messages list in place
 def add_system_message(messages: List[dict], message_input: str) -> List[dict]:
     messages.append({"role": "system", "content": message_input})
     return messages
@@ -152,6 +138,9 @@ def llm_query(
             messages=messages,
             **kwargs,
         )
+        refusal = chat_response.choices[0].message.refusal
+        if refusal is not None:
+            return refusal, history
         response_text = chat_response.choices[0].message.content
         return response_text, _append_assistant(messages, response_text)
     else:
@@ -162,12 +151,14 @@ def llm_query(
             response_format=format,
             **kwargs,
         )
+        # if refused, return the error message
+        refusal = completion.choices[0].message.get("refusal")
+        if refusal is not None:
+            return refusal, history
+
         response = completion.choices[0].message.parsed
         response_json = response.model_dump_json()
         return response, _append_assistant(messages, response_json)
-
-
-# TODO: introduce interactive mode
 
 
 @click.command()
@@ -207,22 +198,29 @@ def llm_query(
     required=False,
 )
 def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) -> None:
+    # Import rich for better console output
+    from rich.console import Console
+
+    console = Console()
+    print = console.print  # override print function
+
     client, model_name = init_llm_api(api_key, model, base_url)
-    click.echo(f"Using API {base_url} with model {model_name}")
+    actual_url = client.base_url
+    print(f"Using API {actual_url} with model {model_name}")
 
     if not interactive and text is not None:
         response, history = llm_query(
             client, model_name, text, temperature=temperature, max_tokens=max_tokens
         )
-        click.echo(response)
+        print(response)
 
     if interactive:
-        click.echo("Running in interactive mode...")
-        click.echo("Type '/exit' or '/quit' to quit")
-        click.echo("Type '/system to add a system message")
-        click.echo("Type '/image to add an image message")
-        click.echo("Type '/history to view past messages")
-        click.echo("Type '/reset to clear the chat history")
+        print("Running in interactive mode...")
+        print("Type '/exit' or '/quit' to quit")
+        print("Type '/system to add a system message")
+        print("Type '/image to add an image message")
+        print("Type '/history to view past messages")
+        print("Type '/reset to clear the chat history")
 
         history = []
         while True:
@@ -231,11 +229,11 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                 break
             elif user_input == "/reset":
                 history = []
-                click.echo("Chat history cleared")
+                print("Chat history cleared")
             elif user_input == "/system":
                 system_message = click.prompt("Enter system message: ")
                 history.append({"role": "system", "content": system_message})
-                click.echo("System message added")
+                print("System message added")
             elif user_input == "/image":
                 image_path = click.prompt("Enter image path: ")
                 user_input = click.prompt("Enter optional message: ")
@@ -244,7 +242,7 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                     history = add_user_message(history, str(user_input), image)
                 else:
                     history = add_user_message(history, image)
-                click.echo("Image message added")
+                print("Image message added")
             else:
                 response, history = llm_query(
                     client,
@@ -254,9 +252,10 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-                click.echo(response)
+                print(response)
 
     return
+
 
 if __name__ == "__main__":
     _main()
