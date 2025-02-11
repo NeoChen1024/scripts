@@ -1,57 +1,56 @@
 #!/usr/bin/env python
-import argparse
 import gc
-from genericpath import exists
-import os
-import sys
 
-import accelerate
 import click
 import torch
-import xformers
 from datasets import load_dataset
 from llmcompressor.modifiers.quantization import GPTQModifier, QuantizationModifier
 from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
 from llmcompressor.transformers import oneshot
 from llmcompressor.transformers.compression.helpers import calculate_offload_device_map
+from compressed_tensors.quantization.quant_scheme import PRESET_SCHEMES
 from torch.nn.attention import SDPBackend, sdpa_kernel
-from torch.nn.functional import scaled_dot_product_attention
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Require latest transformers and llmcompressor
-# TODO: find a better way to intergrate UMA allocator
 
 
 @click.command()
-@click.option("--model_id", required=True, help="Model ID to quantize.")
+@click.option("--model-id", required=True, help="Model ID to quantize.")
 @click.option(
-    "--dataset_id",
+    "--dataset-id",
     default="neuralmagic/LLM_compression_calibration",
     help="Dataset ID to use for calibration.",
 )
 @click.option(
-    "--dataset_split", default="train", help="Dataset split to use for calibration."
+    "--dataset-split", default="train", help="Dataset split to use for calibration."
 )
 @click.option(
-    "--num_calibration_samples",
+    "--num-calibration-samples",
     default=512,
     type=int,
     help="Number of samples to use for calibration.",
 )
 @click.option(
-    "--max_sequence_length",
+    "--max-sequence-length",
     default=2048,
     type=int,
     help="Maximum sequence length to use for calibration.",
 )
 @click.option(
+    "--apply-chat-template",
+    type=bool,
+    default=True,
+    help="Apply chat template to dataset messages.",
+)
+@click.option(
     "--scheme",
     default="W8A8",
-    type=click.Choice(["W8A8", "W4A16", "W4A8", "FP8", "FP8_DYNAMIC"]),
+    type=click.Choice(list(PRESET_SCHEMES.keys())),
     help="Quantization scheme to use. (default: W8A8)",
 )
 @click.option(
-    "--output_dir",
+    "--output-dir",
     help="Output directory to save quantized model. (default: <model_id>-W8A8)",
 )
 @click.option(
@@ -61,24 +60,24 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     help="Tensors to ignore during quantization.",
 )
 @click.option(
-    "--smoothing_strength",
+    "--smoothing-strength",
     default=0.8,
     type=float,
     help="SmoothQuant smoothing strength.",
 )
 @click.option(
-    "--dampening_frac",
+    "--dampening-frac",
     default=0.1,
     type=float,
     help="Dampening fraction for GPTQModifier.",
 )
 @click.option(
-    "--sample_prompt",
+    "--sample-prompt",
     default="Hello my name is",
     help="Prompt to use for sample generation.",
 )
 @click.option(
-    "--trust_remote_code",
+    "--trust-remote-code",
     is_flag=True,
     help="Trust remote code for loading model and tokenizer.",
 )
@@ -88,10 +87,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     type=click.Choice(["auto", "half", "bfloat16"]),
     help="Data type to use for model weights. (Must use half on Turing GPUs)",
 )
-@click.option("--torch_compile", is_flag=True, help="Enable torch.compile.")
+@click.option("--torch-compile", is_flag=True, help="Enable torch.compile.")
 @click.option(
-    "--attention_backend",
-    default="FLASH_ATTENTION",
+    "--attention-backend",
+    default="EFFICIENT_ATTENTION",
     type=click.Choice(
         ["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"]
     ),
@@ -99,14 +98,16 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 )
 @click.option("--deepspeed", is_flag=True, help="Use DeepSpeed")
 @click.option(
-    "--uma_allocator",
-    type=click.Path(exists=True),
-    help="Use custom UMA allocator .so file",
+    "--num-gpu",
+    type=click.IntRange(min=1),
+    default=1,
+    help="Number of GPUs to use for compression",
 )
 @click.option(
-    "--cpu_offload",
+    "--offload-hessians",
     is_flag=True,
-    help="Offload to CPU",
+    default=False,
+    help="Offload hessians to CPU during compression",
 )
 def main(
     model_id,
@@ -114,6 +115,7 @@ def main(
     dataset_split,
     num_calibration_samples,
     max_sequence_length,
+    apply_chat_template,
     scheme,
     output_dir,
     ignore,
@@ -125,38 +127,42 @@ def main(
     torch_compile,
     attention_backend,
     deepspeed,
-    uma_allocator,
-    cpu_offload,
+    num_gpu,
+    offload_hessians,
 ):
-    # use xformers for efficient attention
-    if attention_backend == "EFFICIENT_ATTENTION":
-        xformers.config.set_memory_efficient(True)
-
     # Set up attention backend.
     attention = getattr(SDPBackend, attention_backend)
 
-    if uma_allocator is not None:
-        uma_alloc = torch.cuda.memory.CUDAPluggableAllocator(
-            uma_allocator, "uma_malloc", "uma_free"
-        )
-        torch.cuda.memory.change_current_allocator(uma_alloc)
+    device_map = calculate_offload_device_map(
+        model_id, reserve_for_hessians=True, num_gpus=num_gpu, torch_dtype="auto"
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        device_map="auto",
+        device_map=device_map,
         torch_dtype=dtype,
         trust_remote_code=trust_remote_code,
     )
-    
+
     # Load dataset and preprocess.
     ds = load_dataset(dataset_id, split=dataset_split)
     ds = ds.shuffle(seed=42).select(range(num_calibration_samples))
 
-    def preprocess_fn(example):
-        return {
-            "text": tokenizer.apply_chat_template(example["messages"], tokenize=False)
-        }
+    if apply_chat_template:
+
+        def preprocess_fn(example):
+            return {
+                "text": tokenizer.apply_chat_template(
+                    example["messages"], tokenize=False
+                )
+            }
+
+    else:
+
+        def preprocess_fn(example):
+            string = " ".join(example.values())
+            return {"text": string}
 
     ignore_list = ignore
     recipe = []
@@ -172,6 +178,7 @@ def main(
                 scheme=scheme,
                 ignore=ignore_list,
                 dampening_frac=dampening_frac,
+                offload_hessians=offload_hessians,
             ),
         ]
 
