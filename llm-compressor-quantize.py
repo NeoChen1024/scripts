@@ -164,6 +164,8 @@ def main(
             string = " ".join(example.values())
             return {"text": string}
 
+    ds = ds.map(preprocess_fn)
+
     ignore_list = ignore
     recipe = []
     if scheme.startswith("FP8"):
