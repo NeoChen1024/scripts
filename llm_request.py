@@ -17,6 +17,7 @@ from rich import print
 
 console = Console()
 
+
 def init_llm_api(
     key: Optional[str] = None,
     model: Optional[str] = None,
@@ -67,22 +68,40 @@ def image_to_jpeg_base64(
     return base64.b64encode(image_jpeg.getvalue()).decode("utf-8")
 
 
+# For DeepSeek R1-like models
+# Their responses are in the format of:
+# <thinking>
+# Thinking process..
+# </thinking>
+# Actual response
+def strip_thinking(response: str) -> str:
+    if "</thinking>\n" in response:
+        return response.split("</thinking>\n")[1]
+    else:
+        return response
+
+
 # NOTE: modifies the messages list in place
 def add_user_message(
-    messages: List[dict], message_input: Optional[str] = None, image: Optional[Image.Image] = None, **kwargs
+    messages: List[dict],
+    message_input: Optional[str] = None,
+    image: Optional[Image.Image] = None,
+    **kwargs,
 ) -> List[dict]:
     content_list = []
-    
+
     if message_input is not None:
         content_list.append({"type": "text", "text": message_input})
-    
+
     if image is not None:
-        content_list.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
-            },
-        })
+        content_list.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
+                },
+            }
+        )
     new_message = {
         "role": "user",
         "content": content_list,
@@ -105,7 +124,11 @@ def add_system_message(messages: List[dict], message_input: str) -> List[dict]:
 
 
 # NOTE: modifies the messages list in place
-def _append_assistant(messages: List[dict], response: str) -> List[dict]:
+def add_assistant_message(
+    messages: List[dict], response: str, strip_thinking: Optional[bool] = False
+) -> List[dict]:
+    if strip_thinking:
+        response = strip_thinking(response)
     messages.append({"role": "assistant", "content": response})
     return messages
 
@@ -121,7 +144,7 @@ def llm_query(
     history: Optional[List[dict]] = None,
     format: Optional[BaseModel] = None,
     refusal_is_error: Optional[bool] = False,
-) -> Tuple[str | BaseModel, list]:
+) -> Tuple[str | BaseModel]:
     messages = []
     if history is not None:
         messages = history
@@ -144,7 +167,7 @@ def llm_query(
             **kwargs,
         )
         response_text = chat_response.choices[0].message.content
-        return response_text, _append_assistant(messages, response_text)
+        return response_text
     else:
         # no max_tokens, because we want to get all the messages
         completion = client.beta.chat.completions.parse(
@@ -162,8 +185,7 @@ def llm_query(
             console.log("History: ", history)
             return refusal, history
         response = completion.choices[0].message.parsed
-        response_json = response.model_dump_json()
-        return response, _append_assistant(messages, response_json)
+        return response
 
 
 @click.command()
@@ -202,7 +224,14 @@ def llm_query(
     nargs=1,
     required=False,
 )
-def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) -> None:
+@click.option(
+    "--strip-thinking",
+    is_flag=True,
+    help="Strip the thinking process from the response",
+)
+def _main(
+    api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking
+) -> None:
     print = console.print  # override print function
     prompt = console.input  # override input function
 
@@ -211,7 +240,7 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
     print(f"Using API {actual_url} with model {model_name}")
 
     if not interactive and text is not None:
-        response, history = llm_query(
+        response = llm_query(
             client, model_name, text, temperature=temperature, max_tokens=max_tokens
         )
         print(response)
@@ -248,11 +277,15 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                     image = Image.open(image_path)
                     history = add_user_message(history, str(user_input), image)
                     print("Image message added")
-                    user_input = None # ugly hack to prevent the text from being sent twice
+                    user_input = (
+                        None  # ugly hack to prevent the text from being sent twice
+                    )
                     # There's no continue here because we want to send the image / text now
 
-                with console.status("[bold green]Waiting for response...", spinner="line"):
-                    response, history = llm_query(
+                with console.status(
+                    "[bold green]Waiting for response...", spinner="line"
+                ):
+                    response = llm_query(
                         client,
                         model_name,
                         user_input,
@@ -260,6 +293,7 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text) 
                         temperature=temperature,
                         max_tokens=max_tokens,
                     )
+                add_assistant_message(history, response, strip_thinking)
                 print(response, style="green")
             except Exception as e:
                 print(f"Error: {e}")
