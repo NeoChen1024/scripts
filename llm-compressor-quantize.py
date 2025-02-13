@@ -20,33 +20,38 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 @click.option(
     "--dataset-id",
     default="neuralmagic/LLM_compression_calibration",
+    show_default=True,
     help="Dataset ID to use for calibration.",
 )
 @click.option(
-    "--dataset-split", default="train", help="Dataset split to use for calibration."
+    "--dataset-split", default="train", show_default=True, help="Dataset split to use for calibration."
 )
 @click.option(
     "--num-calibration-samples",
     default=512,
     type=int,
+    show_default=True,
     help="Number of samples to use for calibration.",
 )
 @click.option(
     "--max-sequence-length",
     default=2048,
     type=int,
+    show_default=True,
     help="Maximum sequence length to use for calibration.",
 )
 @click.option(
     "--apply-chat-template",
     type=bool,
     default=True,
+    show_default=True,
     help="Apply chat template to dataset messages.",
 )
 @click.option(
     "--scheme",
     default="W8A8",
     type=click.Choice(list(PRESET_SCHEMES.keys())),
+    show_default=True,
     help="Quantization scheme to use. (default: W8A8)",
 )
 @click.option(
@@ -57,23 +62,27 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     "--ignore",
     multiple=True,
     default=["lm_head"],
+    show_default=True,
     help="Tensors to ignore during quantization.",
 )
 @click.option(
     "--smoothing-strength",
     default=0.8,
     type=float,
+    show_default=True,
     help="SmoothQuant smoothing strength.",
 )
 @click.option(
     "--dampening-frac",
     default=0.1,
     type=float,
+    show_default=True,
     help="Dampening fraction for GPTQModifier.",
 )
 @click.option(
     "--sample-prompt",
     default="Hello my name is",
+    show_default=True,
     help="Prompt to use for sample generation.",
 )
 @click.option(
@@ -85,6 +94,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     "--dtype",
     default="auto",
     type=click.Choice(["auto", "half", "bfloat16"]),
+    show_default=True,
     help="Data type to use for model weights. (Must use half on Turing GPUs)",
 )
 @click.option("--torch-compile", is_flag=True, help="Enable torch.compile.")
@@ -94,6 +104,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     type=click.Choice(
         ["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"]
     ),
+    show_default=True,
     help="Attention backend to use.",
 )
 @click.option("--deepspeed", is_flag=True, help="Use DeepSpeed")
@@ -101,6 +112,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     "--num-gpu",
     type=click.IntRange(min=1),
     default=1,
+    show_default=True,
     help="Number of GPUs to use for compression",
 )
 @click.option(
