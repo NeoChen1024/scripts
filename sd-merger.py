@@ -48,7 +48,7 @@ def error_exit(message):
     console.log(message)
     sys.exit(1)
 
-
+@torch.no_grad()
 def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
     tensor_test = tensor.detach().clone()
     rtz_limit = torch.finfo(output_dtype).tiny
@@ -57,6 +57,39 @@ def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
         return True
     return False
 
+@torch.no_grad()
+def all_checking(model, dtype):
+    console.log("Checking for overflow / rounding to zero / NaN / Inf ...")
+    count_overflow = 0
+    count_rtz = 0
+    count_nan = 0
+    count_inf = 0
+    max_val = torch.finfo(dtype).max
+    for key in model.keys():
+        if model[key].abs().max() > max_val:
+            count_overflow += 1
+        if check_tensor_rounding_to_zero(model[key], dtype):
+            count_rtz += 1
+        if torch.isnan(model[key]).any():
+            count_nan += 1
+        if torch.isinf(model[key]).any():
+            count_inf += 1
+    if count_overflow:
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[dtype]}"
+        )
+    if count_rtz:
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_rtz} tensor(s) will have rounding to zero in {dtype_name[dtype]}"
+        )
+    if count_nan:
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN"
+        )
+    if count_inf:
+        console.log(
+            f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf"
+        )
 
 @click.command()
 @click.option(
@@ -126,6 +159,7 @@ def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
 @click.option("--title", default=None, help="Title of the merged model")
 @click.option("--description", default=None, help="Description of the merged model")
 @click.option("--author", default=None, help="Author of the merged model")
+@torch.no_grad()
 def main(
     input_files,
     weights,
@@ -187,37 +221,7 @@ def main(
         del merge_model
         gc.collect()
 
-    console.log("Checking for overflow / rounding to zero / NaN / Inf ...")
-    count_overflow = 0
-    count_rtz = 0
-    count_nan = 0
-    count_inf = 0
-    max_val = torch.finfo(output_dtype).max
-    for key in output_model.keys():
-        if output_model[key].abs().max() > max_val:
-            count_overflow += 1
-        if check_tensor_rounding_to_zero(output_model[key], output_dtype):
-            count_rtz += 1
-        if torch.isnan(output_model[key]).any():
-            count_nan += 1
-        if torch.isinf(output_model[key]).any():
-            count_inf += 1
-    if count_overflow:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[output_dtype]}"
-        )
-    if count_rtz:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_rtz} tensor(s) will have rounding to zero in {dtype_name[output_dtype]}"
-        )
-    if count_nan:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN"
-        )
-    if count_inf:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf"
-        )
+    all_checking(output_model, output_dtype)    
 
     console.log(f"Casting to {dtype_name[output_dtype]}...")
     for key in output_model.keys():
