@@ -75,8 +75,11 @@ def image_to_jpeg_base64(
 # </thinking>
 # Actual response
 def strip_thinking(response: str) -> str:
-    if "</thinking>\n" in response:
-        return response.split("</thinking>\n")[1]
+    if "</think>" in response:
+        response = response.split("</think>")[1]
+        # strip newlines and spaces
+        response = response.strip()
+        return response
     else:
         return response
 
@@ -125,9 +128,9 @@ def add_system_message(messages: List[dict], message_input: str) -> List[dict]:
 
 # NOTE: modifies the messages list in place
 def add_assistant_message(
-    messages: List[dict], response: str, strip_thinking: Optional[bool] = False
+    messages: List[dict], response: str, _strip_thinking: Optional[bool] = False
 ) -> List[dict]:
-    if strip_thinking:
+    if _strip_thinking:
         response = strip_thinking(response)
     messages.append({"role": "assistant", "content": response})
     return messages
@@ -188,6 +191,7 @@ def llm_query(
         return response
 
 
+# Client implementation for reference
 @click.command()
 @click.option(
     "-k",
@@ -226,8 +230,9 @@ def llm_query(
 )
 @click.option(
     "--strip-thinking",
+    "-s",
     is_flag=True,
-    help="Strip the thinking process from the response",
+    help="Strip the thinking process from the history (for DeepSeek R1-like models)",
 )
 def _main(
     api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking
@@ -248,10 +253,11 @@ def _main(
     if interactive:
         print("Running in interactive mode...")
         print("Type '/exit' or '/quit' to quit")
-        print("Type '/system to add a system message")
-        print("Type '/image to add an image message")
-        print("Type '/history to view past messages")
-        print("Type '/reset to clear the chat history")
+        print("Type '/system' to add a system message")
+        print("Type '/image' to add an image message")
+        print("Type '/history' to view past messages")
+        print("Type '/regen' to regenerate the last message")
+        print("Type '/reset' to clear the chat history")
 
         history = []
         while True:
@@ -271,6 +277,14 @@ def _main(
                 elif user_input == "/history":
                     pprint(history, max_string=256)  # pretty print the history
                     continue
+                elif user_input == "/regen":
+                    if history:
+                        history.pop()
+                        print("Last message removed")
+                    else:
+                        print("No messages to remove")
+                    user_input = None
+                    # There's no continue here!! We want to regenerate the last message
                 elif user_input == "/image":
                     image_path = prompt("Enter image path: ")
                     user_input = prompt("Enter optional message: ")
@@ -294,10 +308,19 @@ def _main(
                         max_tokens=max_tokens,
                     )
                 add_assistant_message(history, response, strip_thinking)
-                print(response, style="green")
+                if strip_thinking:
+                    # colorize the thinking process in grey
+                    if "</think>" in response:
+                        response = response.replace("</think>", "[/bright_black][green]")
+                        if "<think>" in response:
+                            response = response.replace("<think>", "[bright_black]")
+                        else:
+                            response = "[bright_black]" + response
+                
+                print(response)
             except Exception as e:
                 print(f"Error: {e}")
-                pass
+                continue
     return
 
 
