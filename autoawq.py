@@ -46,11 +46,6 @@ from transformers import AutoTokenizer
     help="Number of parallel calibration samples to process at a time.",
 )
 @click.option(
-    "--sample-prompt",
-    default="Hello my name is",
-    help="Prompt to use for sample generation.",
-)
-@click.option(
     "--trust-remote-code",
     is_flag=True,
     help="Trust remote code for loading model and tokenizer.",
@@ -69,7 +64,6 @@ def _main(
     num_calibration_samples,
     max_sequence_length,
     num_parallel_calib_samples,
-    sample_prompt,
     trust_remote_code,
     dtype,
 ):
@@ -108,13 +102,6 @@ def _main(
     model.save_quantized(save_dir)
     tokenizer.save_pretrained(save_dir)
     click.echo(f'Model is quantized and saved at "{save_dir}"')
-
-    click.echo("\n\n")
-    click.echo("========== SAMPLE GENERATION ==============")
-    input_ids = tokenizer(sample_prompt, return_tensors="pt").input_ids.to("cuda")
-    output = model.generate(input_ids, max_new_tokens=100)
-    click.echo(tokenizer.decode(output[0]))
-    click.echo("==========================================\n\n")
 
 
 if __name__ == "__main__":
