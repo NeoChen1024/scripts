@@ -184,7 +184,17 @@ def main(
         recipe = QuantizationModifier(
             targets="Linear", scheme=scheme, ignore=ignore_list
         )
-    elif scheme.startswith("W"):
+    elif scheme == "W4A16": # Pure GPTQ
+        recipe = [
+            GPTQModifier(
+                targets="Linear",
+                scheme=scheme,
+                ignore=ignore_list,
+                dampening_frac=dampening_frac,
+                offload_hessians=offload_hessians,
+            ),
+        ]
+    elif scheme.startswith("W"): # W4A4, W8A8
         recipe = [
             SmoothQuantModifier(smoothing_strength=smoothing_strength),
             GPTQModifier(
