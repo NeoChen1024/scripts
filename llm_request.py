@@ -180,14 +180,15 @@ def llm_query(
             **kwargs,
         )
         # if refused, return the error message
-        refusal = completion.choices[0].message.get("refusal")
+        message = completion.choices[0].message
+        refusal = message.refusal
         if refusal is not None:
             if refusal_is_error:
                 raise ValueError("Refusal occurred: " + refusal)
             console.log("Refusal occurred: " + refusal)
             console.log("History: ", history)
-            return refusal, history
-        response = completion.choices[0].message.parsed
+            return refusal
+        response = message.parsed
         return response
 
 
