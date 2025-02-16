@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # Wrapper for OpenAI API Client
 
-from email.mime import base
 import os
 from typing import Optional, Tuple, List
 import base64
@@ -17,12 +16,27 @@ from rich import print
 
 console = Console()
 
+class LLM_Config:
+    client: OpenAI
+    model_name: str
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+    def __init__(
+        self, client: OpenAI, model_name: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None
+    ) -> None:
+        self.client = client
+        self.model_name = model_name
+        self.temperature = temperature
+        self.max_tokens = max_tokens
 
 def init_llm_api(
     key: Optional[str] = None,
     model: Optional[str] = None,
     base_url: Optional[str] = None,
-) -> Tuple[OpenAI, str]:
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+) -> LLM_Config:
     # Check if the API key is set
     api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
     if (env_key := os.environ.get("LLM_API_KEY")) is not None:
@@ -48,8 +62,7 @@ def init_llm_api(
 
     # Initialize OpenAI client
     client = OpenAI(api_key=api_key, base_url=use_base_url)
-
-    return client, model_name
+    return LLM_Config(client=client, model_name=model_name, temperature=temperature, max_tokens=max_tokens)
 
 
 def image_to_jpeg_base64(
@@ -138,16 +151,18 @@ def add_assistant_message(
 
 # TODO: consider using overload to separate the return types
 def llm_query(
-    client: OpenAI,
-    model_name: str,
+    llm_config: LLM_Config,
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
     history: Optional[List[dict]] = None,
     format: Optional[BaseModel] = None,
     refusal_is_error: Optional[bool] = False,
-) -> Tuple[str | BaseModel]:
+) -> str | BaseModel:
+    client = llm_config.client
+    model_name = llm_config.model_name
+    temperature = llm_config.temperature
+    max_tokens = llm_config.max_tokens
+
     messages = []
     if history is not None:
         messages = history
@@ -188,8 +203,7 @@ def llm_query(
             console.log("Refusal occurred: " + refusal)
             console.log("History: ", history)
             return refusal
-        response = message.parsed
-        return response
+        return message.parsed
 
 
 # Client implementation for reference
@@ -241,13 +255,13 @@ def _main(
     print = console.print  # override print function
     prompt = console.input  # override input function
 
-    client, model_name = init_llm_api(api_key, model, base_url)
-    actual_url = client.base_url
-    print(f"Using API {actual_url} with model {model_name}")
+    llm_config = init_llm_api(api_key, model, base_url, temperature, max_tokens)
+    actual_url = llm_config.client.base_url
+    print(f"Using API {actual_url} with model {llm_config.model_name}")
 
     if not interactive and text is not None:
         response = llm_query(
-            client, model_name, text, temperature=temperature, max_tokens=max_tokens
+            llm_config, text
         )
         print(response)
 
@@ -301,23 +315,22 @@ def _main(
                     "[bold green]Waiting for response...", spinner="line"
                 ):
                     response = llm_query(
-                        client,
-                        model_name,
+                        llm_config,
                         user_input,
                         history=history,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
                     )
                 add_assistant_message(history, response, strip_thinking)
                 if strip_thinking:
                     # colorize the thinking process in grey
                     if "</think>" in response:
-                        response = response.replace("</think>", "[/bright_black][green]")
+                        response = response.replace(
+                            "</think>", "[/bright_black][green]"
+                        )
                         if "<think>" in response:
                             response = response.replace("<think>", "[bright_black]")
                         else:
                             response = "[bright_black]" + response
-                
+
                 print(response)
             except Exception as e:
                 print(f"Error: {e}")
