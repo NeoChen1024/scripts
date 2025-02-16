@@ -74,9 +74,9 @@ def image_to_jpeg_base64(
 # Thinking process..
 # </thinking>
 # Actual response
-def strip_thinking(response: str) -> str:
-    if "</think>" in response:
-        response = response.split("</think>")[1]
+def strip_thinking(response: str, delimiter: Optional[str] = "</thinking>") -> str:
+    if delimiter in response:
+        response = response.split(delimiter)[1]
         # strip newlines and spaces
         response = response.strip()
         return response
