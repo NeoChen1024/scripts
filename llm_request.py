@@ -20,22 +20,19 @@ class LLM_Config:
     client: OpenAI
     model_name: str
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
 
     def __init__(
-        self, client: OpenAI, model_name: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None
+        self, client: OpenAI, model_name: str, temperature: Optional[float] = None
     ) -> None:
         self.client = client
         self.model_name = model_name
         self.temperature = temperature
-        self.max_tokens = max_tokens
 
 def init_llm_api(
     key: Optional[str] = None,
     model: Optional[str] = None,
     base_url: Optional[str] = None,
     temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
 ) -> LLM_Config:
     # Check if the API key is set
     api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
@@ -62,7 +59,7 @@ def init_llm_api(
 
     # Initialize OpenAI client
     client = OpenAI(api_key=api_key, base_url=use_base_url)
-    return LLM_Config(client=client, model_name=model_name, temperature=temperature, max_tokens=max_tokens)
+    return LLM_Config(client=client, model_name=model_name, temperature=temperature)
 
 
 def image_to_jpeg_base64(
@@ -153,6 +150,7 @@ def add_assistant_message(
 def llm_query(
     llm_config: LLM_Config,
     text: Optional[str] = None,
+    max_tokens: Optional[int] = None,
     system_prompt: Optional[str] = None,
     history: Optional[List[dict]] = None,
     format: Optional[BaseModel] = None,
@@ -161,7 +159,6 @@ def llm_query(
     client = llm_config.client
     model_name = llm_config.model_name
     temperature = llm_config.temperature
-    max_tokens = llm_config.max_tokens
 
     messages = []
     if history is not None:
@@ -255,13 +252,13 @@ def _main(
     print = console.print  # override print function
     prompt = console.input  # override input function
 
-    llm_config = init_llm_api(api_key, model, base_url, temperature, max_tokens)
+    llm_config = init_llm_api(api_key, model, base_url, temperature)
     actual_url = llm_config.client.base_url
     print(f"Using API {actual_url} with model {llm_config.model_name}")
 
     if not interactive and text is not None:
         response = llm_query(
-            llm_config, text
+            llm_config, text, max_tokens=max_tokens
         )
         print(response)
 
