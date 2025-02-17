@@ -2,7 +2,7 @@
 # Wrapper for OpenAI API Client
 
 import os
-from typing import Optional, Tuple, List
+from typing import Optional, List
 import base64
 from io import BytesIO
 
@@ -16,17 +16,32 @@ from rich import print
 
 console = Console()
 
+
+def _fallback_parameters(*args) -> any:
+    for arg in args:
+        if arg is not None:
+            return arg
+    return None
+
+
 class LLM_Config:
     client: OpenAI
     model_name: str
     temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
 
     def __init__(
-        self, client: OpenAI, model_name: str, temperature: Optional[float] = None
+        self,
+        client: OpenAI,
+        model_name: str,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> None:
         self.client = client
         self.model_name = model_name
         self.temperature = temperature
+        self.max_tokens = max_tokens
+
 
 def init_llm_api(
     key: Optional[str] = None,
@@ -150,15 +165,17 @@ def add_assistant_message(
 def llm_query(
     llm_config: LLM_Config,
     text: Optional[str] = None,
-    max_tokens: Optional[int] = None,
     system_prompt: Optional[str] = None,
     history: Optional[List[dict]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
     format: Optional[BaseModel] = None,
     refusal_is_error: Optional[bool] = False,
 ) -> str | BaseModel:
     client = llm_config.client
     model_name = llm_config.model_name
-    temperature = llm_config.temperature
+    temperature = _fallback_parameters(temperature, llm_config.temperature)
+    max_tokens = _fallback_parameters(max_tokens, llm_config.max_tokens)
 
     messages = []
     if history is not None:
@@ -252,13 +269,13 @@ def _main(
     print = console.print  # override print function
     prompt = console.input  # override input function
 
-    llm_config = init_llm_api(api_key, model, base_url, temperature)
+    llm_config = init_llm_api(api_key, model, base_url)
     actual_url = llm_config.client.base_url
     print(f"Using API {actual_url} with model {llm_config.model_name}")
 
     if not interactive and text is not None:
         response = llm_query(
-            llm_config, text, max_tokens=max_tokens
+            llm_config, text, max_tokens=max_tokens, temperature=temperature
         )
         print(response)
 
