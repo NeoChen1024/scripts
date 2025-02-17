@@ -132,6 +132,12 @@ class LLM_History(UserList):
         if self.data:
             self.data.pop()
 
+    def get_last_message(self) -> dict:
+        if self.data:
+            return self.data[-1]
+        else:
+            return {}
+
     def add_system(self, message_input: str) -> None:
         self.data.append({"role": "system", "content": message_input})
 
