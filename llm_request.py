@@ -325,15 +325,19 @@ def _main(
                     user_input = None
                     # There's no continue here!! We want to regenerate the last message
                 elif user_input == "/image":
-                    image_path = prompt("Enter image path: ")
-                    user_input = prompt("Enter optional message: ")
-                    image = Image.open(image_path)
-                    history.add_user(history, str(user_input), image)
-                    print("Image message added")
-                    user_input = (
-                        None  # ugly hack to prevent the text from being sent twice
-                    )
+                    try:
+                        image_path = prompt("Enter image path: ")
+                        user_input = prompt("Enter optional message: ")
+                        image = Image.open(str(image_path))
+                        history.add_user(history, str(user_input), image)
+                        print("Image message added")
+                        user_input = (
+                            None  # ugly hack to prevent the text from being sent twice
+                        )
                     # There's no continue here because we want to send the image / text now
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        continue  # continue to the command line
 
                 with console.status(
                     "[bold green]Waiting for response...", spinner="line"
