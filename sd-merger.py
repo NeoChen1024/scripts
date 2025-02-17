@@ -48,6 +48,7 @@ def error_exit(message):
     console.log(message)
     sys.exit(1)
 
+
 @torch.no_grad()
 def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
     tensor_test = tensor.detach().clone()
@@ -56,6 +57,7 @@ def check_tensor_rounding_to_zero(tensor, output_dtype) -> bool:
     if tensor_test.abs().min() < rtz_limit:
         return True
     return False
+
 
 @torch.no_grad()
 def all_checking(model, dtype):
@@ -90,6 +92,7 @@ def all_checking(model, dtype):
         console.log(
             f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf"
         )
+
 
 @click.command()
 @click.option(
@@ -221,7 +224,7 @@ def main(
         del merge_model
         gc.collect()
 
-    all_checking(output_model, output_dtype)    
+    all_checking(output_model, output_dtype)
 
     console.log(f"Casting to {dtype_name[output_dtype]}...")
     for key in output_model.keys():

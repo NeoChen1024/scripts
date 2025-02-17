@@ -47,32 +47,40 @@ def traverse_dir(
 
 
 @click.command()
-@click.argument('inputdir', type=click.Path(exists=True, file_okay=False))
-@click.argument('outputdir', type=click.Path())
+@click.argument("inputdir", type=click.Path(exists=True, file_okay=False))
+@click.argument("outputdir", type=click.Path())
 @click.option(
-    '-s', '--strip', type=int, default=None,
-    help='How many levels of directories to strip in the output file name. (default: dynamic)'
+    "-s",
+    "--strip",
+    type=int,
+    default=None,
+    help="How many levels of directories to strip in the output file name. (default: dynamic)",
 )
 @click.option(
-    '-m', '--mode', type=click.Choice(list(modes.keys())), default='copy',
-    help='Choose between modes. (default: copy)'
+    "-m",
+    "--mode",
+    type=click.Choice(list(modes.keys())),
+    default="copy",
+    help="Choose between modes. (default: copy)",
 )
 @click.option(
-    '-d', '--delimiter', type=str, default="_",
-    help='Delimiter for directory names'
+    "-d", "--delimiter", type=str, default="_", help="Delimiter for directory names"
 )
 def main(inputdir, outputdir, strip, mode, delimiter):
     os.makedirs(outputdir, exist_ok=True)
-    
+
     # calculate how many levels of directories to strip
     strip_level = strip
     if strip_level is None:
         strip_level = len(os.path.normpath(inputdir).split(os.path.sep))
-    
-    click.echo(f"Flattening {inputdir} --> {outputdir} and strip {strip_level} levels of directories")
-    
+
+    click.echo(
+        f"Flattening {inputdir} --> {outputdir} and strip {strip_level} levels of directories"
+    )
+
     func = modes[mode]
     traverse_dir(inputdir, outputdir, strip_level, func, delimiter)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

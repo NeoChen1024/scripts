@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # Wrapper for OpenAI API Client
 
-import os
-from typing import Optional, List
 import base64
+import os
 from io import BytesIO
+from typing import List, Optional
+from collections import UserList
 
-from PIL import Image
 import click
 from openai import OpenAI
+from PIL import Image
 from pydantic import BaseModel
+from rich import print
 from rich.console import Console
 from rich.pretty import pprint
-from rich import print
 
 console = Console()
 
@@ -48,6 +49,7 @@ def init_llm_api(
     model: Optional[str] = None,
     base_url: Optional[str] = None,
     temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
 ) -> LLM_Config:
     # Check if the API key is set
     api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
@@ -74,7 +76,12 @@ def init_llm_api(
 
     # Initialize OpenAI client
     client = OpenAI(api_key=api_key, base_url=use_base_url)
-    return LLM_Config(client=client, model_name=model_name, temperature=temperature)
+    return LLM_Config(
+        client=client,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
 
 
 def image_to_jpeg_base64(
@@ -109,56 +116,59 @@ def strip_thinking(response: str, delimiter: Optional[str] = "</thinking>") -> s
         return response
 
 
-# NOTE: modifies the messages list in place
-def add_user_message(
-    messages: List[dict],
-    message_input: Optional[str] = None,
-    image: Optional[Image.Image] = None,
-    **kwargs,
-) -> List[dict]:
-    content_list = []
+class LLM_History(UserList):
+    data: List[dict]
 
-    if message_input is not None:
-        content_list.append({"type": "text", "text": message_input})
+    def __init__(self, history: Optional[List[dict]] = None) -> None:
+        if history is not None:
+            self.data = history
+        else:
+            self.data = []
 
-    if image is not None:
-        content_list.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
-                },
+    def __del__(self):
+        del self.data
+
+    def del_last_message(self) -> None:
+        if self.data:
+            self.data.pop()
+
+    def add_system(self, message_input: str) -> None:
+        self.data.append({"role": "system", "content": message_input})
+
+    def add_assistant(
+        self, response: str, _strip_thinking: Optional[bool] = False
+    ) -> None:
+        if _strip_thinking:
+            response = strip_thinking(response)
+        self.data.append({"role": "assistant", "content": response})
+
+    def add_user(
+        self,
+        message_input: Optional[str] = None,
+        image: Optional[Image.Image] = None,
+        **kwargs,
+    ) -> List[dict]:
+        content_list = []
+
+        if message_input is not None:
+            content_list.append({"type": "text", "text": message_input})
+
+        if image is not None:
+            content_list.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
+                    },
+                }
+            )
+
+        if content_list:
+            new_message = {
+                "role": "user",
+                "content": content_list,
             }
-        )
-    new_message = {
-        "role": "user",
-        "content": content_list,
-    }
-    messages.append(new_message)
-    return messages
-
-
-# NOTE: modifies the messages list in place
-def del_last_message(messages: List[dict]) -> List[dict]:
-    if messages:
-        messages.pop()
-    return messages
-
-
-# NOTE: modifies the messages list in place
-def add_system_message(messages: List[dict], message_input: str) -> List[dict]:
-    messages.append({"role": "system", "content": message_input})
-    return messages
-
-
-# NOTE: modifies the messages list in place
-def add_assistant_message(
-    messages: List[dict], response: str, _strip_thinking: Optional[bool] = False
-) -> List[dict]:
-    if _strip_thinking:
-        response = strip_thinking(response)
-    messages.append({"role": "assistant", "content": response})
-    return messages
+            self.data.append(new_message)
 
 
 # TODO: consider using overload to separate the return types
@@ -166,7 +176,7 @@ def llm_query(
     llm_config: LLM_Config,
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
-    history: Optional[List[dict]] = None,
+    history: Optional[LLM_History] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     format: Optional[BaseModel] = None,
@@ -179,7 +189,7 @@ def llm_query(
 
     messages = []
     if history is not None:
-        messages = history
+        messages = history.data
     # Add system prompt
     if system_prompt is not None:
         messages.append({"role": "system", "content": system_prompt})
@@ -269,14 +279,12 @@ def _main(
     print = console.print  # override print function
     prompt = console.input  # override input function
 
-    llm_config = init_llm_api(api_key, model, base_url)
+    llm_config = init_llm_api(api_key, model, base_url, temperature, max_tokens)
     actual_url = llm_config.client.base_url
     print(f"Using API {actual_url} with model {llm_config.model_name}")
 
     if not interactive and text is not None:
-        response = llm_query(
-            llm_config, text, max_tokens=max_tokens, temperature=temperature
-        )
+        response = llm_query(llm_config, text)
         print(response)
 
     if interactive:
@@ -288,7 +296,7 @@ def _main(
         print("Type '/regen' to regenerate the last message")
         print("Type '/reset' to clear the chat history")
 
-        history = []
+        history = LLM_History()
         while True:
             try:
                 user_input = prompt("[white on blue]>>[/] ")
@@ -307,18 +315,14 @@ def _main(
                     pprint(history, max_string=256)  # pretty print the history
                     continue
                 elif user_input == "/regen":
-                    if history:
-                        history.pop()
-                        print("Last message removed")
-                    else:
-                        print("No messages to remove")
+                    history.del_last_message()
                     user_input = None
                     # There's no continue here!! We want to regenerate the last message
                 elif user_input == "/image":
                     image_path = prompt("Enter image path: ")
                     user_input = prompt("Enter optional message: ")
                     image = Image.open(image_path)
-                    history = add_user_message(history, str(user_input), image)
+                    history.add_user(history, str(user_input), image)
                     print("Image message added")
                     user_input = (
                         None  # ugly hack to prevent the text from being sent twice
@@ -333,7 +337,7 @@ def _main(
                         user_input,
                         history=history,
                     )
-                add_assistant_message(history, response, strip_thinking)
+                history.add_assistant(response, strip_thinking)
                 if strip_thinking:
                     # colorize the thinking process in grey
                     if "</think>" in response:

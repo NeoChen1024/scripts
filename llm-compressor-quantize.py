@@ -24,7 +24,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     help="Dataset ID to use for calibration.",
 )
 @click.option(
-    "--dataset-split", default="train", show_default=True, help="Dataset split to use for calibration."
+    "--dataset-split",
+    default="train",
+    show_default=True,
+    help="Dataset split to use for calibration.",
 )
 @click.option(
     "--num-calibration-samples",
@@ -184,7 +187,7 @@ def main(
         recipe = QuantizationModifier(
             targets="Linear", scheme=scheme, ignore=ignore_list
         )
-    elif scheme == "W4A16": # Pure GPTQ
+    elif scheme == "W4A16":  # Pure GPTQ
         recipe = [
             GPTQModifier(
                 targets="Linear",
@@ -194,7 +197,7 @@ def main(
                 offload_hessians=offload_hessians,
             ),
         ]
-    elif scheme.startswith("W"): # W4A4, W8A8
+    elif scheme.startswith("W"):  # W4A4, W8A8
         recipe = [
             SmoothQuantModifier(smoothing_strength=smoothing_strength),
             GPTQModifier(
