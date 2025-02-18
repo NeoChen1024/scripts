@@ -25,6 +25,16 @@ def _fallback_parameters(*args) -> any:
     return None
 
 
+# fallback: default -> environment variable -> override
+def _fallback_environment(default: any, env_var: str, override: Optional[any] = None) -> any:
+    val = default
+    if (env_val := os.environ.get(env_var)) is not None:
+        val = env_val
+    if override is not None:
+        val = override
+    return val
+
+
 class LLM_Config:
     client: OpenAI
     model_name: str
@@ -33,41 +43,20 @@ class LLM_Config:
 
     def __init__(
         self,
-        key: Optional[str] = None,
-        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
         base_url: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> None:
-        # Check if the API key is set,
-        api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
-        if (env_key := os.environ.get("LLM_API_KEY")) is not None:
-            api_key = env_key
-        # Override if provided by command line argument
-        if key is not None:
-            api_key = key
-
-        # Get model name from environment variable if it exists
-        model_name = "mistral-large-latest"  # default model from Mistral
-        if (env_model := os.environ.get("LLM_MODEL_NAME")) is not None:
-            model_name = env_model
-        # Override if provided by command line argument
-        if model is not None:
-            model_name = model
-
-        use_base_url = "https://api.mistral.ai/v1"
-        if (env_url := os.environ.get("LLM_BASE_URL")) is not None:
-            use_base_url = env_url
-        # Override if provided by command line argument
-        if base_url is not None:
-            use_base_url = base_url
-
-        # Initialize OpenAI client
-        self.client = OpenAI(api_key=api_key, base_url=use_base_url)
-        self.model_name = model_name
-
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.model_name = _fallback_environment("mistral-large-latest", "LLM_MODEL_NAME", model_name)
+
+        api_key = _fallback_environment("xxxx", "LLM_API_KEY", api_key)
+        base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
+        # Initialize OpenAI client
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
 
 
 def image_to_jpeg_base64(input_image: Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
