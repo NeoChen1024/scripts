@@ -36,11 +36,6 @@ def _fallback_environment(default: any, env_var: str, override: Optional[any] = 
 
 
 class LLM_Config:
-    client: OpenAI
-    model_name: str
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -90,8 +85,6 @@ def strip_thinking(response: str, delimiter: Optional[str] = "</thinking>") -> s
 
 
 class LLM_History(UserList):
-    data: List[dict]
-
     def __init__(self, history: Optional[List[dict]] = None) -> None:
         if history is not None:
             self.data = history
