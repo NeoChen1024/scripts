@@ -3,9 +3,9 @@
 
 import base64
 import os
-from io import BytesIO
-from typing import List, Optional
 from collections import UserList
+from io import BytesIO
+from typing import List, Optional, overload
 
 import click
 from openai import OpenAI
@@ -33,60 +33,44 @@ class LLM_Config:
 
     def __init__(
         self,
-        client: OpenAI,
-        model_name: str,
+        key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> None:
-        self.client = client
+        # Check if the API key is set,
+        api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
+        if (env_key := os.environ.get("LLM_API_KEY")) is not None:
+            api_key = env_key
+        # Override if provided by command line argument
+        if key is not None:
+            api_key = key
+
+        # Get model name from environment variable if it exists
+        model_name = "mistral-large-latest"  # default model from Mistral
+        if (env_model := os.environ.get("LLM_MODEL_NAME")) is not None:
+            model_name = env_model
+        # Override if provided by command line argument
+        if model is not None:
+            model_name = model
+
+        use_base_url = "https://api.mistral.ai/v1"
+        if (env_url := os.environ.get("LLM_BASE_URL")) is not None:
+            use_base_url = env_url
+        # Override if provided by command line argument
+        if base_url is not None:
+            use_base_url = base_url
+
+        # Initialize OpenAI client
+        self.client = OpenAI(api_key=api_key, base_url=use_base_url)
         self.model_name = model_name
+
         self.temperature = temperature
         self.max_tokens = max_tokens
 
 
-def init_llm_api(
-    key: Optional[str] = None,
-    model: Optional[str] = None,
-    base_url: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-) -> LLM_Config:
-    # Check if the API key is set
-    api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
-    if (env_key := os.environ.get("LLM_API_KEY")) is not None:
-        api_key = env_key
-    # Override if provided by command line argument
-    if key is not None:
-        api_key = key
-
-    # Get model name from environment variable if it exists
-    model_name = "mistral-large-latest"  # default model from Mistral
-    if (env_model := os.environ.get("LLM_MODEL_NAME")) is not None:
-        model_name = env_model
-    # Override if provided by command line argument
-    if model is not None:
-        model_name = model
-
-    use_base_url = "https://api.mistral.ai/v1"
-    if (env_url := os.environ.get("LLM_BASE_URL")) is not None:
-        use_base_url = env_url
-    # Override if provided by command line argument
-    if base_url is not None:
-        use_base_url = base_url
-
-    # Initialize OpenAI client
-    client = OpenAI(api_key=api_key, base_url=use_base_url)
-    return LLM_Config(
-        client=client,
-        model_name=model_name,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-
-
-def image_to_jpeg_base64(
-    input_image: Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)
-) -> str:
+def image_to_jpeg_base64(input_image: Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
     image = input_image.copy()
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -141,9 +125,7 @@ class LLM_History(UserList):
     def add_system(self, message_input: str) -> None:
         self.data.append({"role": "system", "content": message_input})
 
-    def add_assistant(
-        self, response: str, _strip_thinking: Optional[bool] = False
-    ) -> None:
+    def add_assistant(self, response: str, _strip_thinking: Optional[bool] = False) -> None:
         if _strip_thinking:
             response = strip_thinking(response)
         self.data.append({"role": "assistant", "content": response})
@@ -163,9 +145,7 @@ class LLM_History(UserList):
             content_list.append(
                 {
                     "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"
-                    },
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_to_jpeg_base64(image, **kwargs)}"},
                 }
             )
 
@@ -279,13 +259,11 @@ def llm_query(
     is_flag=True,
     help="Strip the thinking process from the history (for DeepSeek R1-like models)",
 )
-def _main(
-    api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking
-) -> None:
+def _main(api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking) -> None:
     print = console.print  # override print function
     prompt = console.input  # override input function
 
-    llm_config = init_llm_api(api_key, model, base_url, temperature, max_tokens)
+    llm_config = LLM_Config(api_key, model, base_url, temperature, max_tokens)
     actual_url = llm_config.client.base_url
     print(f"Using API {actual_url} with model {llm_config.model_name}")
 
@@ -331,17 +309,13 @@ def _main(
                         image = Image.open(str(image_path))
                         history.add_user(history, str(user_input), image)
                         print("Image message added")
-                        user_input = (
-                            None  # ugly hack to prevent the text from being sent twice
-                        )
+                        user_input = None  # ugly hack to prevent the text from being sent twice
                     # There's no continue here because we want to send the image / text now
                     except Exception as e:
                         print(f"Error: {e}")
                         continue  # continue to the command line
 
-                with console.status(
-                    "[bold green]Waiting for response...", spinner="line"
-                ):
+                with console.status("[bold green]Waiting for response...", spinner="line"):
                     response = llm_query(
                         llm_config,
                         user_input,
@@ -351,9 +325,7 @@ def _main(
                 if strip_thinking:
                     # colorize the thinking process in grey
                     if "</think>" in response:
-                        response = response.replace(
-                            "</think>", "[/bright_black][green]"
-                        )
+                        response = response.replace("</think>", "[/bright_black][green]")
                         if "<think>" in response:
                             response = response.replace("<think>", "[bright_black]")
                         else:
