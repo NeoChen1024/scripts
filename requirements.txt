@@ -11,3 +11,5 @@ reflink
 accelerate
 torchvision
 tqdm
+kokoro
+soundfile
