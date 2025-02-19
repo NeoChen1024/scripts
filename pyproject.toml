@@ -14,7 +14,7 @@ dependencies = {file = ["requirements.txt"]}
 
 # only search for modules in the src directory
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["python-src"]
 
 [tool.black]
 line-length = 132
