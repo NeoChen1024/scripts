@@ -190,7 +190,7 @@ def summary(metadata, console):
     "-j", "--json", "dump_json", is_flag=True, help="Dump all metadata in JSON format"
 )
 @click.option("-l", "--list", "list_tensors", is_flag=True, help="List all tensors")
-def main(file, dump_json, list_tensors):
+def __main__(file, dump_json, list_tensors):
     install(show_locals=True)
 
     console = Console()
@@ -210,4 +210,4 @@ def main(file, dump_json, list_tensors):
 
 
 if __name__ == "__main__":
-    main()
+    __main__()

@@ -124,7 +124,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
     default=False,
     help="Offload hessians to CPU during compression",
 )
-def main(
+def __main__(
     model_id,
     dataset_id,
     dataset_split,
@@ -256,4 +256,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    __main__()

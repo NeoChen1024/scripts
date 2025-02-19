@@ -41,7 +41,7 @@ def argparser():
     return args
 
 
-def main():
+def __main__():
     args = argparser()
     print(args)
     # Use CLIP-G
@@ -79,4 +79,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    __main__()

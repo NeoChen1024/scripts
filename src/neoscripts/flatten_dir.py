@@ -66,7 +66,7 @@ def traverse_dir(
 @click.option(
     "-d", "--delimiter", type=str, default="_", help="Delimiter for directory names"
 )
-def main(inputdir, outputdir, strip, mode, delimiter):
+def __main__(inputdir, outputdir, strip, mode, delimiter):
     os.makedirs(outputdir, exist_ok=True)
 
     # calculate how many levels of directories to strip
@@ -83,4 +83,4 @@ def main(inputdir, outputdir, strip, mode, delimiter):
 
 
 if __name__ == "__main__":
-    main()
+    __main__()

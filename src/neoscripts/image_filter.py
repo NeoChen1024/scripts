@@ -112,7 +112,7 @@ def collate_fn(batch):
     type=int,
     help="Multiplier for the image buffer size",
 )
-def filter_images(
+def __main__(
     input_dir,
     output_dir,
     rejected_dir,
@@ -210,4 +210,4 @@ def filter_images(
 
 
 if __name__ == "__main__":
-    filter_images()
+    __main__()

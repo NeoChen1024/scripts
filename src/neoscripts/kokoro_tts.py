@@ -60,7 +60,7 @@ class KokoroTTS:
 @click.option("--text", "-t", type=str, required=True, help="The text to convert to speech.")
 @click.option("--output_file", "-o", type=str, required=True, help="The output file name.")
 @click.option("--device", "-d", type=str, default="cpu", help="The device to use for processing.", show_default=True)
-def _test(text: str, output_file: str, device: str):
+def __main__(text: str, output_file: str, device: str):
     if os.path.exists(text):
         with open(text, "r") as f:
             text = f.read()
@@ -69,4 +69,4 @@ def _test(text: str, output_file: str, device: str):
 
 
 if __name__ == "__main__":
-    _test()
+    __main__()

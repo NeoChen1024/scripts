@@ -145,7 +145,7 @@ def panic(e: str):
     is_flag=True,
     help="Disable image downscaling before uploading.",
 )
-def main(
+def __main__(
     file_paths,
     caption_output,
     vision_prompt_file,
@@ -340,6 +340,6 @@ def main(
 
 if __name__ == "__main__":
     try:
-        main()
+        __main__()
     except Exception as e:
         panic(str(e))

@@ -56,7 +56,7 @@ from transformers import AutoTokenizer
     type=click.Choice(["auto", "half", "bfloat16"]),
     help="Data type to use for model weights. (Must use half on Turing GPUs)",
 )
-def _main(
+def __main__(
     model_id,
     output_path,
     attn_implementation,
@@ -105,4 +105,4 @@ def _main(
 
 
 if __name__ == "__main__":
-    _main()
+    __main__()

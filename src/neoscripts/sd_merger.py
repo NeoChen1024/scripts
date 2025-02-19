@@ -163,7 +163,7 @@ def all_checking(model, dtype):
 @click.option("--description", default=None, help="Description of the merged model")
 @click.option("--author", default=None, help="Author of the merged model")
 @torch.no_grad()
-def main(
+def __main__(
     input_files,
     weights,
     accumulate_format,
@@ -260,4 +260,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    __main__()

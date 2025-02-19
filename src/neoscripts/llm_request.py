@@ -241,7 +241,7 @@ def llm_query(
     is_flag=True,
     help="Strip the thinking process from the history (for DeepSeek R1-like models)",
 )
-def _main(api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking) -> None:
+def __main__(api_key, model, base_url, max_tokens, temperature, interactive, text, strip_thinking) -> None:
     print = console.print  # override print function
     prompt = console.input  # override input function
 
@@ -321,4 +321,4 @@ def _main(api_key, model, base_url, max_tokens, temperature, interactive, text, 
 
 
 if __name__ == "__main__":
-    _main()
+    __main__()
