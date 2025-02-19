@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+from tabnanny import verbose
 from typing import List, Optional
 
 import click
@@ -60,12 +61,13 @@ class KokoroTTS:
 @click.option("--text", "-t", type=str, required=True, help="The text to convert to speech.")
 @click.option("--output_file", "-o", type=str, required=True, help="The output file name.")
 @click.option("--device", "-d", type=str, default="cpu", help="The device to use for processing.", show_default=True)
+@click.option("--verbose", "-v", is_flag=True, help="Prints the phonemes and graphemes.", show_default=True)
 def __main__(text: str, output_file: str, device: str):
     if os.path.exists(text):
         with open(text, "r") as f:
             text = f.read()
     tts = KokoroTTS(device=device)
-    tts.text_to_speech(text, output_file)
+    tts.text_to_speech(text, output_file, verbose=verbose)
 
 
 if __name__ == "__main__":
