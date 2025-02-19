@@ -25,15 +25,9 @@ def none_or_str(value):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Translate text using OpenAI-compatible API"
-    )
-    parser.add_argument(
-        "-i", "--input_file", required=True, help="Path to the input text file"
-    )
-    parser.add_argument(
-        "-o", "--output_file", required=True, help="Path to save the translated output"
-    )
+    parser = argparse.ArgumentParser(description="Translate text using OpenAI-compatible API")
+    parser.add_argument("-i", "--input_file", required=True, help="Path to the input text file")
+    parser.add_argument("-o", "--output_file", required=True, help="Path to save the translated output")
     parser.add_argument(
         "-l",
         "--language",
@@ -68,9 +62,7 @@ def parse_args():
         "--api_key",
         help="Override LLM API key (default: content of LLM_API_KEY environment variable)",
     )
-    parser.add_argument(
-        "-u", "--base_url", help="Override LLM base URL (default: Mistral's)"
-    )
+    parser.add_argument("-u", "--base_url", help="Override LLM base URL (default: Mistral's)")
     parser.add_argument(
         "-t",
         "--temperature",
@@ -211,19 +203,13 @@ def __main__():
     # Save system prompt for log colorization
     system_prompt_for_colored_log = system_prompt
     if additional_prompt is not None:
-        system_prompt_for_colored_log = system_prompt_for_colored_log.replace(
-            " %%", "[bright_cyan] %%[/bright_cyan]", 1
-        )
+        system_prompt_for_colored_log = system_prompt_for_colored_log.replace(" %%", "[bright_cyan] %%[/bright_cyan]", 1)
 
         system_prompt = system_prompt.replace("%%", additional_prompt, 1)
-        system_prompt_for_colored_log = system_prompt_for_colored_log.replace(
-            "%%", additional_prompt, 1
-        )
+        system_prompt_for_colored_log = system_prompt_for_colored_log.replace("%%", additional_prompt, 1)
     else:
         system_prompt = system_prompt.replace(" %%", "", 1)  # Remove the extra space
-        system_prompt_for_colored_log = system_prompt_for_colored_log.replace(
-            " %%", "", 1
-        )
+        system_prompt_for_colored_log = system_prompt_for_colored_log.replace(" %%", "", 1)
 
     # Print all information in a banner
     if verbose:
@@ -236,9 +222,7 @@ def __main__():
         print("Prompt:")
         print(
             Padding(
-                "[bright_magenta]"
-                + system_prompt_for_colored_log
-                + "[/bright_magenta]",
+                "[bright_magenta]" + system_prompt_for_colored_log + "[/bright_magenta]",
                 (0, 0, 0, 4),
             )
         )
@@ -247,13 +231,7 @@ def __main__():
     # Initialize OpenAI client
     client = OpenAI(api_key=api_key, base_url=base_url)
 
-    print(
-        "\n[white on blue]>>[/white on blue] [yellow]"
-        + input_file
-        + "[/yellow] => [yellow]"
-        + output_file
-        + "[/yellow]"
-    )
+    print("\n[white on blue]>>[/white on blue] [yellow]" + input_file + "[/yellow] => [yellow]" + output_file + "[/yellow]")
 
     # Chained translation
     current_round_original = ""
@@ -279,13 +257,7 @@ def __main__():
         lines = lines[lines_per_round:]
 
         console.log("================================================")
-        console.log(
-            "Round [bright_white]"
-            + str(round_number)
-            + "/"
-            + str(total_rounds)
-            + "[/bright_white] Original:"
-        )
+        console.log("Round [bright_white]" + str(round_number) + "/" + str(total_rounds) + "[/bright_white] Original:")
         console.log(
             Padding(
                 "[bright_yellow]" + current_round_original + "[/bright_yellow]",

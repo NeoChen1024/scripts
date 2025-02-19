@@ -5,9 +5,9 @@
 #     find . -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | \
 #         parallel --bar -0 -j 16 -n 16 --lb ~/vcs/scripts/llm-image-captioning.py '{}' --existing-caption skip
 
+import base64
 import os
 import sys
-import base64
 from io import BytesIO
 
 import click
@@ -21,9 +21,7 @@ from rich.padding import Padding
 console = Console()
 
 
-def get_image_base64(
-    image_path: str, downscale: bool = True, size: tuple[int, int] = (2048, 2048)
-) -> str:
+def get_image_base64(image_path: str, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
     image = Image.open(image_path)
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -123,9 +121,7 @@ def panic(e: str):
     default=None,
     help="Maximum number of tokens in the caption.",
 )
-@click.option(
-    "-v", "--verbose", is_flag=True, default=False, help="Enable verbose output."
-)
+@click.option("-v", "--verbose", is_flag=True, default=False, help="Enable verbose output.")
 @click.option(
     "-ex",
     "--existing-caption",
@@ -168,12 +164,8 @@ def __main__(
         console.log("Error: Can't use --caption_output with multiple input images")
         sys.exit(1)
 
-    if caption_output is not None and not caption_output.endswith(
-        "." + caption_extension
-    ):
-        console.log(
-            "[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if --caption_output is provided"
-        )
+    if caption_output is not None and not caption_output.endswith("." + caption_extension):
+        console.log("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if --caption_output is provided")
 
     # API key resolution
     final_api_key = "xxxx"  # default placeholder
@@ -216,18 +208,12 @@ def __main__(
     # Process additional prompt
     vision_prompt_for_colored_log = vision_prompt
     if additional_prompt is not None:
-        vision_prompt_for_colored_log = vision_prompt.replace(
-            " %%", "[bright_cyan] %%[/bright_cyan]", 1
-        )
+        vision_prompt_for_colored_log = vision_prompt.replace(" %%", "[bright_cyan] %%[/bright_cyan]", 1)
         vision_prompt = vision_prompt.replace("%%", additional_prompt, 1)
-        vision_prompt_for_colored_log = vision_prompt_for_colored_log.replace(
-            "%%", additional_prompt, 1
-        )
+        vision_prompt_for_colored_log = vision_prompt_for_colored_log.replace("%%", additional_prompt, 1)
     else:
         vision_prompt = vision_prompt.replace(" %%", "", 1)
-        vision_prompt_for_colored_log = vision_prompt_for_colored_log.replace(
-            " %%", "", 1
-        )
+        vision_prompt_for_colored_log = vision_prompt_for_colored_log.replace(" %%", "", 1)
 
     if verbose:
         print("================================================")
@@ -238,9 +224,7 @@ def __main__(
         print("Full vision prompt:")
         print(
             Padding(
-                "[bright_magenta]"
-                + vision_prompt_for_colored_log
-                + "[/bright_magenta]",
+                "[bright_magenta]" + vision_prompt_for_colored_log + "[/bright_magenta]",
                 (0, 0, 0, 4),
             )
         )
@@ -255,14 +239,9 @@ def __main__(
             filename_info_line = ""
             if this_caption_output is None:
                 filename_info_line = (
-                    "[white on blue]>>[/white on blue] [yellow]"
-                    + file_path
-                    + "[/yellow] => [yellow]*."
-                    + caption_extension
+                    "[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]*." + caption_extension
                 )
-                this_caption_output = (
-                    os.path.splitext(file_path)[0] + "." + caption_extension
-                )
+                this_caption_output = os.path.splitext(file_path)[0] + "." + caption_extension
             else:
                 filename_info_line = (
                     "[white on blue]>>[/white on blue] [yellow]"
@@ -288,9 +267,7 @@ def __main__(
 
             if verbose:
                 console.log(
-                    "Payload size: [bright_yellow]"
-                    + humanize.naturalsize(len(image_base64), binary=True)
-                    + "[/bright_yellow]"
+                    "Payload size: [bright_yellow]" + humanize.naturalsize(len(image_base64), binary=True) + "[/bright_yellow]"
                 )
                 console.log("Caption:")
 
@@ -306,9 +283,7 @@ def __main__(
             except Exception as e:
                 panic(str(e))
 
-            padded_response = Padding(
-                "[green]" + caption_response + "[/green]", (0, 0, 0, 4)
-            )
+            padded_response = Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
             if verbose:
                 console.log(padded_response)
             else:

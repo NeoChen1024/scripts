@@ -3,12 +3,12 @@ import gc
 
 import click
 import torch
+from compressed_tensors.quantization.quant_scheme import PRESET_SCHEMES
 from datasets import load_dataset
 from llmcompressor.modifiers.quantization import GPTQModifier, QuantizationModifier
 from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
 from llmcompressor.transformers import oneshot
 from llmcompressor.transformers.compression.helpers import calculate_offload_device_map
-from compressed_tensors.quantization.quant_scheme import PRESET_SCHEMES
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -104,9 +104,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 @click.option(
     "--attention-backend",
     default="EFFICIENT_ATTENTION",
-    type=click.Choice(
-        ["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"]
-    ),
+    type=click.Choice(["EFFICIENT_ATTENTION", "FLASH_ATTENTION", "CUDNN_ATTENTION", "MATH"]),
     show_default=True,
     help="Attention backend to use.",
 )
@@ -148,9 +146,7 @@ def __main__(
     # Set up attention backend.
     attention = getattr(SDPBackend, attention_backend)
 
-    device_map = calculate_offload_device_map(
-        model_id, reserve_for_hessians=True, num_gpus=num_gpu, torch_dtype="auto"
-    )
+    device_map = calculate_offload_device_map(model_id, reserve_for_hessians=True, num_gpus=num_gpu, torch_dtype="auto")
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
@@ -167,11 +163,7 @@ def __main__(
     if apply_chat_template:
 
         def preprocess_fn(example):
-            return {
-                "text": tokenizer.apply_chat_template(
-                    example["messages"], tokenize=False
-                )
-            }
+            return {"text": tokenizer.apply_chat_template(example["messages"], tokenize=False)}
 
     else:
 
@@ -184,9 +176,7 @@ def __main__(
     ignore_list = ignore
     recipe = []
     if scheme.startswith("FP8"):
-        recipe = QuantizationModifier(
-            targets="Linear", scheme=scheme, ignore=ignore_list
-        )
+        recipe = QuantizationModifier(targets="Linear", scheme=scheme, ignore=ignore_list)
     elif scheme == "W4A16":  # Pure GPTQ
         recipe = [
             GPTQModifier(

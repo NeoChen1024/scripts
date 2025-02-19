@@ -3,8 +3,8 @@
 # Require latest autoawq
 
 import click
-from datasets import load_dataset
 from awq import AutoAWQForCausalLM
+from datasets import load_dataset
 from transformers import AutoTokenizer
 
 

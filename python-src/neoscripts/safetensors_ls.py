@@ -150,9 +150,7 @@ def summary(metadata, console):
             total_parameters += parameters
             total_size += size
             dtype_histogram[dtype] = dtype_histogram.get(dtype, 0) + 1
-            shape_histogram[(tuple(shape), dtype)] = (
-                shape_histogram.get((tuple(shape), dtype), 0) + 1
-            )
+            shape_histogram[(tuple(shape), dtype)] = shape_histogram.get((tuple(shape), dtype), 0) + 1
     # sort by name
     dtype_histogram = sorted(dtype_histogram.items(), key=lambda x: x[0])
     # natural sort by shape
@@ -175,20 +173,14 @@ def summary(metadata, console):
         table.add_row(shape_to_str(shape), dtype, str(count))
     console.print(table)
 
-    console.print(
-        f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})"
-    )
-    console.print(
-        f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size, binary=True)}[/bright_cyan]"
-    )
+    console.print(f"[b]Total parameters:[/b] [bright_cyan]{humanize.intword(total_parameters)}[/bright_cyan] ({total_parameters})")
+    console.print(f"[b]Total size:[/b] [bright_cyan]{humanize.naturalsize(total_size, binary=True)}[/bright_cyan]")
     return
 
 
 @click.command()
 @click.argument("file", nargs=-1, required=True)
-@click.option(
-    "-j", "--json", "dump_json", is_flag=True, help="Dump all metadata in JSON format"
-)
+@click.option("-j", "--json", "dump_json", is_flag=True, help="Dump all metadata in JSON format")
 @click.option("-l", "--list", "list_tensors", is_flag=True, help="List all tensors")
 def __main__(file, dump_json, list_tensors):
     install(show_locals=True)

@@ -2,17 +2,17 @@
 
 # Simple script to merge multiple SD1.5/SDXL models into a single model
 
+import gc
 import os
 import sys
-import gc
 from datetime import datetime
 
 import click
-import torch
 import safetensors
-from safetensors.torch import save_file
+import torch
 from rich.console import Console
 from rich.traceback import install
+from safetensors.torch import save_file
 
 console = Console()
 install(console=console)
@@ -77,21 +77,13 @@ def all_checking(model, dtype):
         if torch.isinf(model[key]).any():
             count_inf += 1
     if count_overflow:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[dtype]}"
-        )
+        console.log(f"[bright_red]Warning:[/bright_red] {count_overflow} tensor(s) will have overflow in {dtype_name[dtype]}")
     if count_rtz:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_rtz} tensor(s) will have rounding to zero in {dtype_name[dtype]}"
-        )
+        console.log(f"[bright_red]Warning:[/bright_red] {count_rtz} tensor(s) will have rounding to zero in {dtype_name[dtype]}")
     if count_nan:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN"
-        )
+        console.log(f"[bright_red]Warning:[/bright_red] {count_nan} tensor(s) contain NaN")
     if count_inf:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf"
-        )
+        console.log(f"[bright_red]Warning:[/bright_red] {count_inf} tensor(s) contain Inf")
 
 
 @click.command()
@@ -190,9 +182,7 @@ def __main__(
 
     total_weight = sum(weights)
     if total_weight != 1:
-        console.log(
-            f"[bright_red]Warning:[/bright_red] weights do not add up to 1: {total_weight}"
-        )
+        console.log(f"[bright_red]Warning:[/bright_red] weights do not add up to 1: {total_weight}")
 
     # Load the first model and apply scaling
     output_model = read_model(input_files[0], accumulate_dtype)
@@ -201,9 +191,7 @@ def __main__(
     for key in output_model.keys():
         if key.startswith("first_stage_model.") and skip_vae:
             continue
-        if (
-            key.startswith("cond_stage_model.") or key.startswith("conditioner.")
-        ) and skip_clip:
+        if (key.startswith("cond_stage_model.") or key.startswith("conditioner.")) and skip_clip:
             continue
         output_model[key] *= weights[0]
 
@@ -216,9 +204,7 @@ def __main__(
         for key in output_model.keys():
             if key.startswith("first_stage_model.") and skip_vae:
                 continue
-            if (
-                key.startswith("cond_stage_model.") or key.startswith("conditioner.")
-            ) and skip_clip:
+            if (key.startswith("cond_stage_model.") or key.startswith("conditioner.")) and skip_clip:
                 continue
             output_model[key] += weight * merge_model[key].to(accumulate_dtype)
         del merge_model
@@ -237,12 +223,7 @@ def __main__(
             output_model[f"first_stage_model.{key}"] = vae_model[key]
         del vae_model
 
-    formula = " + ".join(
-        [
-            f"{os.path.basename(input_files[i])} * {weights[i]}"
-            for i in range(len(input_files))
-        ]
-    )
+    formula = " + ".join([f"{os.path.basename(input_files[i])} * {weights[i]}" for i in range(len(input_files))])
     model_name = title if title else os.path.basename(output)
     description = description if description else formula
     author = author if author else "SD-Merger"

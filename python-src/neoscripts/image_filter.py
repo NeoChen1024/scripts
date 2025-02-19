@@ -6,10 +6,10 @@ from typing import List
 
 import click
 import filetype
+import torch
 from accelerate import Accelerator
 from PIL import Image, ImageOps
 from reflink import reflink
-import torch
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import AutoImageProcessor, ViTForImageClassification, pipeline
@@ -82,9 +82,7 @@ def collate_fn(batch):
     type=click.FloatRange(0, 1, clamp=True),
     help="Threshold for filtering images (0-1)",
 )
-@click.option(
-    "--batch-size", "-b", default=16, type=int, help="Batch size for filtering images"
-)
+@click.option("--batch-size", "-b", default=16, type=int, help="Batch size for filtering images")
 @click.option(
     "--model-name",
     "-m",

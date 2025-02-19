@@ -60,9 +60,7 @@ def __main__():
     print("Compare with text: ", args.text)
 
     # Preprocess images and texts
-    inputs = processor(
-        text=args.text, images=images, return_tensors="pt", truncation=True
-    ).to(device)
+    inputs = processor(text=args.text, images=images, return_tensors="pt", truncation=True).to(device)
     print("Preprocessed")
 
     # Calculate similarity

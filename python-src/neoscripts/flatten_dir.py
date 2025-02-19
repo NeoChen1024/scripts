@@ -6,14 +6,15 @@
 # args: input_dir flattened_output_dir
 
 
-import os
-import sys
 import argparse
+import os
 import shutil
-import click
+import sys
 from shutil import copy2, move
-from reflink import reflink
 from typing import Callable
+
+import click
+from reflink import reflink
 
 modes = {
     "copy": copy2,
@@ -34,9 +35,7 @@ def filename_flatten(path: str, strip_level: int = 0, delimiter: str = "_") -> s
     return f"{directories}_{filename}"
 
 
-def traverse_dir(
-    inputdir: str, outputdir: str, strip_level: int, function: Callable, delimiter: str
-) -> None:
+def traverse_dir(inputdir: str, outputdir: str, strip_level: int, function: Callable, delimiter: str) -> None:
     for dirpath, dirnames, filenames in os.walk(inputdir):
         files = [os.path.join(dirpath, file) for file in filenames]
         for file in files:
@@ -63,9 +62,7 @@ def traverse_dir(
     default="copy",
     help="Choose between modes. (default: copy)",
 )
-@click.option(
-    "-d", "--delimiter", type=str, default="_", help="Delimiter for directory names"
-)
+@click.option("-d", "--delimiter", type=str, default="_", help="Delimiter for directory names")
 def __main__(inputdir, outputdir, strip, mode, delimiter):
     os.makedirs(outputdir, exist_ok=True)
 
@@ -74,9 +71,7 @@ def __main__(inputdir, outputdir, strip, mode, delimiter):
     if strip_level is None:
         strip_level = len(os.path.normpath(inputdir).split(os.path.sep))
 
-    click.echo(
-        f"Flattening {inputdir} --> {outputdir} and strip {strip_level} levels of directories"
-    )
+    click.echo(f"Flattening {inputdir} --> {outputdir} and strip {strip_level} levels of directories")
 
     func = modes[mode]
     traverse_dir(inputdir, outputdir, strip_level, func, delimiter)
