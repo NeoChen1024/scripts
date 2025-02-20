@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-from tabnanny import verbose
 from typing import List, Optional
 
 import click
@@ -62,7 +61,7 @@ class KokoroTTS:
 @click.option("--output_file", "-o", type=str, required=True, help="The output file name.")
 @click.option("--device", "-d", type=str, default="cpu", help="The device to use for processing.", show_default=True)
 @click.option("--verbose", "-v", is_flag=True, help="Prints the phonemes and graphemes.", show_default=True)
-def __main__(text: str, output_file: str, device: str):
+def __main__(text: str, output_file: str, device: str, verbose: bool):
     if os.path.exists(text):
         with open(text, "r") as f:
             text = f.read()
