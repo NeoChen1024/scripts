@@ -13,3 +13,4 @@ torchvision
 tqdm
 kokoro
 soundfile
+matplotlib
