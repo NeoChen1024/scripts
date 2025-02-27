@@ -102,6 +102,7 @@ def __main__(
             # integer bins
             plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
             plt.xlabel('Exponent') 
+            plt.yscale('log')
             plt.ylabel('Density') 
             plt.title(f'Tensor {key} Exponent Histogram') 
             
