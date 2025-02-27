@@ -36,11 +36,8 @@ def bin_count(min_val: int, max_val: int) -> int:
 
 safe_dtypes = [
     torch.float32,
-    torch.float16,
-#    torch.bfloat16, # not supported by torch.histogram
     torch.float64,
     torch.float,
-    torch.half,
     torch.double,
 ]
 
