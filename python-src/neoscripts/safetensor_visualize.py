@@ -10,14 +10,10 @@ import click
 import safetensors
 import torch
 from tqdm import tqdm
-from rich.console import Console
-from rich.traceback import install
 from torch import Tensor
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-
-console = Console()
-install(console=console)
+from matplotlib.ticker import MaxNLocator
 
 
 def read_model(file, dtype=None) -> dict:
@@ -31,11 +27,6 @@ def read_model(file, dtype=None) -> dict:
     return tensors
 
 
-def error_exit(message):
-    console.log(message)
-    sys.exit(1)
-
-
 def bin_count(min_val: int, max_val: int) -> int:
     bins = max_val - min_val
     if min_val == max_val:
@@ -46,7 +37,7 @@ def bin_count(min_val: int, max_val: int) -> int:
 safe_dtypes = [
     torch.float32,
     torch.float16,
-    torch.bfloat16,
+#    torch.bfloat16, # not supported by torch.histogram
     torch.float64,
     torch.float,
     torch.half,
@@ -57,7 +48,7 @@ safe_dtypes = [
 def tensor_value_histogram_autorange(tensor: Tensor, bins: Optional[int] = 100) -> Tuple[Tensor, Tensor]:
     if tensor.dtype not in safe_dtypes:
         tensor = tensor.to(torch.float32)
-    return torch.histogram(tensor, bins=bins, density=True)
+    return torch.histogram(tensor, bins=bins)
 
 
 def tensor_exponent_histogram_autorange(tensor: Tensor) -> Tuple[Tensor, Tensor]:
@@ -69,8 +60,9 @@ def tensor_exponent_histogram_autorange(tensor: Tensor) -> Tuple[Tensor, Tensor]
     max_val = ceil(exponent.max().item())
     bins = bin_count(min_val, max_val)
 
+    # convert to float32 for histogram
     exponent = exponent.to(torch.float32)
-    return torch.histogram(exponent, bins=bins, range=(min_val, max_val), density=True)
+    return torch.histogram(exponent, bins=bins, range=(min_val, max_val))
 
 
 @click.command()
@@ -95,24 +87,39 @@ def __main__(
         output += ".pdf"
 
     tensors = read_model(input_file)
-    console.log(f"Loaded {len(tensors)} tensors from {input_file}")
+    print(f"Loaded {len(tensors)} tensors from {input_file}")
     
     with PdfPages(output) as pdf: 
         t = tqdm(tensors.items(), desc="Processing tensors", unit="tensor")
         for key, tensor in t:
-            histogram, bins = tensor_exponent_histogram_autorange(tensor)
             t.write(f"\t{key}")
-            
-            bins = bins[:-1]
+            # subplot with 2 rows and 1 column
             plt.figure()
-            plt.bar(bins, histogram, align='center', color=['forestgreen']) 
-            plt.xlabel('Bins') 
-            plt.ylabel('Frequency') 
-            plt.title(f'Tensor {key} Histogram') 
+            
+            plt.subplot(2, 1, 1)
+            exponent_histogram, exponent_bins = tensor_exponent_histogram_autorange(tensor)
+            plt.bar(exponent_bins[:-1], exponent_histogram, color='green') 
+            # integer bins
+            plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+            plt.xlabel('Exponent') 
+            plt.ylabel('Density') 
+            plt.title(f'Tensor {key} Exponent Histogram') 
+            
+            plt.subplot(2, 1, 2)
+            value_histogram, value_bins = tensor_value_histogram_autorange(tensor)
+            plt.bar(value_bins[:-1], value_histogram, color='blue')
+            plt.gca().xaxis.set_major_locator(MaxNLocator(integer=False))
+            plt.xlabel('Value') 
+            plt.yscale('log')
+            plt.ylabel('Density') 
+            plt.title(f'Tensor {key} Value Histogram') 
+
+            plt.tight_layout()
+            
             pdf.savefig() 
             plt.close()
 
-    console.log(f"Saved histogram to {output}")
+    print(f"Saved histogram to {output}")
 
 
 if __name__ == "__main__":
