@@ -185,6 +185,10 @@ def __main__(
             # we need a reliable way to preserve the input image paths.
             result = pipe(batch_images)
             for result, image_path in zip(result, original_image_path):
+                # Get the path of image relative to the input directory
+                relative_filepath = os.path.relpath(image_path, input_dir)
+                # separate the path and the filename
+                relative_dirpath = os.path.join(*relative_filepath.split(os.path.sep)[:-1])
                 bn = os.path.basename(image_path)
                 # Extract the prediction scores and labels
                 predictions = result
@@ -192,11 +196,13 @@ def __main__(
                 # Determine the destination dir based on the prediction and threshold
                 hq_score = [p for p in predictions if p["label"] == "hq"][0]["score"]
                 destination_dir = output_dir if hq_score >= threshold else rejected_dir
+                destination_dir = os.path.join(destination_dir, relative_dirpath)
 
                 t.write(f"[{hq_score:0.3f}] {bn}")
                 if not noop:
                     if name_sort:
-                        bn = f"{hq_score * 1000:4.0f}_{bn}"
+                        bn = f"{hq_score * 1000:04.0f}_{bn}"
+                    os.makedirs(destination_dir, exist_ok=True)
                     file_func(
                         image_path,
                         os.path.join(destination_dir, bn),
