@@ -14,3 +14,5 @@ tqdm
 kokoro
 soundfile
 matplotlib
+safetensors
+click
