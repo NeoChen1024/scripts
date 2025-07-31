@@ -5,9 +5,10 @@ import base64
 import os
 from collections import UserList
 from io import BytesIO
-from typing import List, Optional, overload
+from typing import List, Literal, Optional, overload
 
 import click
+import PIL
 from openai import OpenAI
 from PIL import Image
 from pydantic import BaseModel
@@ -18,7 +19,7 @@ from rich.pretty import pprint
 console = Console()
 
 
-def _fallback_parameters(*args) -> any:
+def _fallback_parameters(*args) -> any:  # type: ignore
     for arg in args:
         if arg is not None:
             return arg
@@ -26,7 +27,7 @@ def _fallback_parameters(*args) -> any:
 
 
 # fallback: default -> environment variable -> override
-def _fallback_environment(default: any, env_var: str, override: Optional[any] = None) -> any:
+def _fallback_environment(default: str, env_var: str, override: Optional[str] = None) -> str:
     val = default
     if (env_val := os.environ.get(env_var)) is not None:
         val = env_val
@@ -43,10 +44,14 @@ class LLM_Config:
         base_url: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        strip_thinking: Optional[bool] = False,
+        thinking_delimiter: Optional[str] = "</thinking>",
     ) -> None:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.model_name = _fallback_environment("mistral-large-latest", "LLM_MODEL_NAME", model_name)
+        self.strip_thinking = strip_thinking
+        self.thinking_delimiter = thinking_delimiter
 
         api_key = _fallback_environment("xxxx", "LLM_API_KEY", api_key)
         base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
@@ -54,7 +59,7 @@ class LLM_Config:
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
 
-def image_to_jpeg_base64(input_image: Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
+def image_to_jpeg_base64(input_image: Image.Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
     image = input_image.copy()
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -75,7 +80,7 @@ def image_to_jpeg_base64(input_image: Image, downscale: bool = True, size: tuple
 # </thinking>
 # Actual response
 def strip_thinking(response: str, delimiter: Optional[str] = "</thinking>") -> str:
-    if delimiter in response:
+    if delimiter and delimiter in response:
         response = response.split(delimiter)[1]
         # strip newlines and spaces
         response = response.strip()
@@ -104,6 +109,26 @@ class LLM_History(UserList):
         else:
             return {}
 
+    # delete first n non-system messages
+    def del_first_n_non_system_messages(self, n: int = 1) -> None:
+        count = 0
+        temp_list = []
+        for message in self.data:
+            if message["role"] != "system":
+                count += 1
+            temp_list.append(message)
+            if count >= n:
+                break
+        self.data = temp_list
+
+    def del_last_messages(self, n: int = 1) -> None:
+        for _ in range(n):
+            if self.data:
+                self.data.pop()
+
+    def del_all_system_messages(self) -> None:
+        self.data = [message for message in self.data if message["role"] != "system"]
+
     def add_system(self, message_input: str) -> None:
         self.data.append({"role": "system", "content": message_input})
 
@@ -117,7 +142,7 @@ class LLM_History(UserList):
         message_input: Optional[str] = None,
         image: Optional[Image.Image] = None,
         **kwargs,
-    ) -> List[dict]:
+    ) -> None:
         content_list = []
 
         if message_input is not None:
@@ -139,15 +164,41 @@ class LLM_History(UserList):
             self.data.append(new_message)
 
 
-# TODO: consider using overload to separate the return types
+@overload
 def llm_query(
     llm_config: LLM_Config,
+    format: Optional[Literal[None]] = None,
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
     history: Optional[LLM_History] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    format: Optional[BaseModel] = None,
+    refusal_is_error: Optional[bool] = False,
+) -> str:
+    ...
+@overload
+def llm_query(
+    llm_config: LLM_Config,
+    format: type[BaseModel],
+    text: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    history: Optional[LLM_History] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    refusal_is_error: Optional[bool] = False,
+) -> BaseModel:
+    ...
+
+
+
+def llm_query(
+    llm_config: LLM_Config,
+    format: Optional[type[BaseModel]] = None,
+    text: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    history: Optional[LLM_History] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
     refusal_is_error: Optional[bool] = False,
 ) -> str | BaseModel:
     client = llm_config.client
@@ -177,6 +228,8 @@ def llm_query(
             **kwargs,
         )
         response_text = chat_response.choices[0].message.content
+        if llm_config.strip_thinking:
+            response_text = strip_thinking(response_text, llm_config.thinking_delimiter)
         return response_text
     else:
         # no max_tokens, because we want to get all the messages
@@ -195,7 +248,7 @@ def llm_query(
             console.log("Refusal occurred: " + refusal)
             console.log("History: ", history)
             return refusal
-        return message.parsed
+        return message.parsed # type: ignore
 
 
 # Client implementation for reference
@@ -250,7 +303,7 @@ def __main__(api_key, model, base_url, max_tokens, temperature, interactive, tex
     print(f"Using API {actual_url} with model {llm_config.model_name}")
 
     if not interactive and text is not None:
-        response = llm_query(llm_config, text)
+        response = llm_query(llm_config, text=text)
         print(response)
 
     if interactive:
@@ -269,7 +322,7 @@ def __main__(api_key, model, base_url, max_tokens, temperature, interactive, tex
                 if user_input == "/exit" or user_input == "/quit":
                     break
                 elif user_input == "/reset":
-                    history = []
+                    history.clear()
                     print("Chat history cleared")
                     continue
                 elif user_input == "/system":
@@ -289,7 +342,7 @@ def __main__(api_key, model, base_url, max_tokens, temperature, interactive, tex
                         image_path = prompt("Enter image path: ")
                         user_input = prompt("Enter optional message: ")
                         image = Image.open(str(image_path))
-                        history.add_user(history, str(user_input), image)
+                        history.add_user(str(user_input), image)
                         print("Image message added")
                         user_input = None  # ugly hack to prevent the text from being sent twice
                     # There's no continue here because we want to send the image / text now
@@ -300,7 +353,7 @@ def __main__(api_key, model, base_url, max_tokens, temperature, interactive, tex
                 with console.status("[bold green]Waiting for response...", spinner="line"):
                     response = llm_query(
                         llm_config,
-                        user_input,
+                        text=user_input,
                         history=history,
                     )
                 history.add_assistant(response, strip_thinking)
