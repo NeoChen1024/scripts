@@ -8,7 +8,6 @@ from datasets import load_dataset
 from llmcompressor.modifiers.quantization import GPTQModifier, QuantizationModifier
 from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
 from llmcompressor.transformers import oneshot
-from llmcompressor.transformers.compression.helpers import calculate_offload_device_map
 from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -146,12 +145,9 @@ def __main__(
     # Set up attention backend.
     attention = getattr(SDPBackend, attention_backend)
 
-    device_map = calculate_offload_device_map(model_id, reserve_for_hessians=True, num_gpus=num_gpu, torch_dtype="auto")
-
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-        device_map=device_map,
         torch_dtype=dtype,
         trust_remote_code=trust_remote_code,
     )
@@ -219,11 +215,6 @@ def __main__(
         gc.collect()
         torch.cuda.empty_cache()
         oneshot(
-            deepspeed=deepspeed,
-            bf16=use_bf16,
-            fp16=use_fp16,
-            torch_compile=use_torch_compile,
-            torch_compile_backend="inductor",
             model=model,
             dataset=ds,
             recipe=recipe,
