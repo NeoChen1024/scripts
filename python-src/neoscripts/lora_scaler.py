@@ -6,6 +6,7 @@ from click import echo
 import safetensors
 from safetensors.torch import save_file
 
+
 @click.command()
 @click.option("--scale-by", "-s", type=float)
 @click.option("--set-alpha", "-a", type=float)
@@ -19,7 +20,7 @@ def scale_lora(input_file, output_file, scale_by, set_alpha, list_alpha_values):
         for key in t.keys():
             lora_tensors[key] = t.get_tensor(key).clone().to("cpu")
         metadata = t.metadata()
-    
+
     for key in lora_tensors.keys():
         if not key.startswith("lora"):
             raise ValueError(f"Unexpected key: {key}")
@@ -27,7 +28,7 @@ def scale_lora(input_file, output_file, scale_by, set_alpha, list_alpha_values):
     if list_alpha_values:
         for key in lora_tensors.keys():
             if key.endswith(".alpha"):
-                echo(f"{key}: {lora_tensors[key].item()}")        
+                echo(f"{key}: {lora_tensors[key].item()}")
 
     if scale_by:
         for key in lora_tensors.keys():
@@ -38,10 +39,10 @@ def scale_lora(input_file, output_file, scale_by, set_alpha, list_alpha_values):
             if key.endswith(".alpha"):
                 lora_tensors[key] = set_alpha
 
-
     if output_file:
         save_file(lora_tensors, output_file, metadata=metadata)
         echo(f"Saved to {output_file}")
+
 
 if __name__ == "__main__":
     scale_lora()

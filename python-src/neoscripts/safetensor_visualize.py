@@ -85,36 +85,36 @@ def __main__(
 
     tensors = read_model(input_file)
     print(f"Loaded {len(tensors)} tensors from {input_file}")
-    
-    with PdfPages(output) as pdf: 
+
+    with PdfPages(output) as pdf:
         t = tqdm(tensors.items(), desc="Processing tensors", unit="tensor")
         for key, tensor in t:
             t.write(f"\t{key}")
             # subplot with 2 rows and 1 column
             plt.figure()
-            
+
             plt.subplot(2, 1, 1)
             exponent_histogram, exponent_bins = tensor_exponent_histogram_autorange(tensor)
-            plt.bar(exponent_bins[:-1], exponent_histogram, color='green') 
+            plt.bar(exponent_bins[:-1], exponent_histogram, color="green")
             # integer bins
             plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
-            plt.xlabel('Exponent') 
-            plt.yscale('log')
-            plt.ylabel('Density') 
-            plt.title(f'Tensor {key} Exponent Histogram') 
-            
+            plt.xlabel("Exponent")
+            plt.yscale("log")
+            plt.ylabel("Density")
+            plt.title(f"Tensor {key} Exponent Histogram")
+
             plt.subplot(2, 1, 2)
             value_histogram, value_bins = tensor_value_histogram_autorange(tensor)
-            plt.bar(value_bins[:-1], value_histogram, color='blue')
+            plt.bar(value_bins[:-1], value_histogram, color="blue")
             plt.gca().xaxis.set_major_locator(MaxNLocator(integer=False))
-            plt.xlabel('Value') 
-            plt.yscale('log')
-            plt.ylabel('Density') 
-            plt.title(f'Tensor {key} Value Histogram') 
+            plt.xlabel("Value")
+            plt.yscale("log")
+            plt.ylabel("Density")
+            plt.title(f"Tensor {key} Value Histogram")
 
             plt.tight_layout()
-            
-            pdf.savefig() 
+
+            pdf.savefig()
             plt.close()
 
     print(f"Saved histogram to {output}")

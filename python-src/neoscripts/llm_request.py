@@ -174,8 +174,7 @@ def llm_query(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     refusal_is_error: Optional[bool] = False,
-) -> str:
-    ...
+) -> str: ...
 @overload
 def llm_query(
     llm_config: LLM_Config,
@@ -186,9 +185,7 @@ def llm_query(
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
     refusal_is_error: Optional[bool] = False,
-) -> BaseModel:
-    ...
-
+) -> BaseModel: ...
 
 
 def llm_query(
@@ -248,7 +245,7 @@ def llm_query(
             console.log("Refusal occurred: " + refusal)
             console.log("History: ", history)
             return refusal
-        return message.parsed # type: ignore
+        return message.parsed  # type: ignore
 
 
 # Client implementation for reference
