@@ -119,14 +119,11 @@ def get_caption_for_image(
     vision_prompt: str,
     image_base64: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
+    api_args: Optional[Dict[str, Any]] = None,
 ) -> str:
     kwarg = {}
-    if temperature is not None:
-        kwarg["temperature"] = temperature
-    if max_tokens is not None:
-        kwarg["max_tokens"] = max_tokens
+    if api_args is not None:
+        kwarg.update(api_args)
     messages: List[Union[ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam]] = [
         ChatCompletionSystemMessageParam(
             role="system",
@@ -171,8 +168,7 @@ def process_captions_from_queue(
     system_prompt: str,
     vision_prompt: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
+    api_args: Optional[Dict[str, Any]] = None,
 ):
     """
     Process captions from a queue using the OpenAI client.
@@ -209,6 +205,8 @@ def process_captions_from_queue(
                 + "[/bright_yellow]"
             )
 
+            if api_args is None:
+                api_args = {}
             caption_response = get_caption_for_image(
                 client,
                 model_name,
@@ -216,8 +214,7 @@ def process_captions_from_queue(
                 vision_prompt,
                 image_base64,
                 examples,
-                temperature,
-                max_tokens,
+                **api_args
             )
             caption_response = caption_response.strip()
             # log padded caption response
@@ -336,18 +333,12 @@ default_vision_prompt = "Generate the caption for the following image."
     help="Override LLM base URL (default: from LLM_BASE_URL environment variable).",
 )
 @click.option(
-    "-tp",
-    "--temperature",
-    type=float,
+    "-a",
+    "--api-args",
     default=None,
-    help="Temperature for caption generation.",
-)
-@click.option(
-    "-mt",
-    "--max_tokens",
-    type=int,
-    default=None,
-    help="Maximum number of tokens in the caption.",
+    help="Additional API arguments as a JSON string or file path (default: None).",
+    type=click.STRING,
+    show_default=True,
 )
 @click.option("-v", "--verbose", is_flag=True, default=False, help="Enable verbose output.")
 @click.option(
@@ -387,8 +378,7 @@ def __main__(
     model,
     api_key,
     base_url,
-    temperature,
-    max_tokens,
+    api_args,
     verbose,
     existing_caption,
     caption_extension,
@@ -442,6 +432,20 @@ def __main__(
             pass
     else:
         vision_prompt = default_vision_prompt
+    
+    final_api_args: Optional[Dict[str, Any]] = None
+    if api_args is not None:
+        try:
+            if os.path.exists(api_args):
+                with open(api_args, "r", encoding="utf-8") as f:
+                    api_args = f.read()
+            final_api_args = eval(api_args)  # Convert JSON string to dict
+            if not isinstance(final_api_args, dict):
+                raise ValueError("API arguments must be a JSON object.")
+        except Exception as e:
+            panic(f"Failed to parse API arguments: {e}")
+    else:
+        final_api_args = {}
 
     # Process examples directory if provided
     examples = []
@@ -457,8 +461,8 @@ def __main__(
         print("================================================")
         print("Base URL:\t[cyan]" + final_base_url + "[/cyan]")
         print("Model:\t\t[cyan]" + model_name + "[/cyan]")
-        print("Temperature:\t[cyan]" + str(temperature) + "[/cyan]")
-        print("Max tokens:\t[cyan]" + str(max_tokens) + "[/cyan]")
+        if final_api_args is not None and isinstance(final_api_args, dict):
+            print("API arguments:\t[cyan]" + str(final_api_args) + "[/cyan]")
         print(
             "Examples:\t[cyan]"
             + str(len(examples) // 2)
@@ -515,8 +519,7 @@ def __main__(
             vision_prompt,
             image_base64,
             examples,
-            temperature,
-            max_tokens,
+            final_api_args
         )
         caption_response = caption_response.strip()
         # log padded caption response
@@ -555,8 +558,7 @@ def __main__(
                 system_prompt,
                 vision_prompt,
                 examples,
-                temperature,
-                max_tokens,
+                api_args,
             ),
         )
         worker.daemon = True
