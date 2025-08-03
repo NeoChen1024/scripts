@@ -567,17 +567,17 @@ def __main__(
     try:
         with Progress(
             SpinnerColumn(),
-            "[progress.description]{task.description}",
-            BarColumn(),
             MofNCompleteColumn(),
+            BarColumn(),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
+            "{task.description}",
             console=console,
         ) as progress:
-            task = progress.add_task("[cyan]Queueing images...", total=len(file_paths))
+            task = progress.add_task("captioning", total=len(file_paths))
             for file_path in file_paths:
-                progress.update(task, advance=1, description=f"[cyan]Added: {os.path.basename(file_path)}")
                 image_queue.put(file_path)
+                progress.update(task, advance=1, description=f"[cyan]Queued: {os.path.basename(file_path)}")
 
             progress.update(task, completed=len(file_paths), description="[green]All images queued![/green]")
         # wait for all tasks to be done
