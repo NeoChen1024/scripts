@@ -36,7 +36,9 @@ class ImageDatasetLoader(Dataset):
         image_path = self.image_paths[idx]
         try:
             img = Image.open(image_path)
-            img = ImageOps.exif_transpose(img)
+            corr = ImageOps.exif_transpose(img)
+            if corr is not None:
+                img = corr
             img.convert("RGB")
             img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
             # Pad to ensure the image is 1024x1024
@@ -184,6 +186,9 @@ def __main__(
             # Letting it load data by itself is a bad idea too, as there can be errors in loading images, and
             # we need a reliable way to preserve the input image paths.
             result = pipe(batch_images)
+            if result is None:
+                t.write("No result from pipeline")
+                continue
             for result, image_path in zip(result, original_image_path):
                 # Get the path of image relative to the input directory
                 relative_filepath = os.path.relpath(image_path, input_dir)

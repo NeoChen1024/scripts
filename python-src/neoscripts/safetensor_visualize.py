@@ -45,7 +45,7 @@ safe_dtypes = [
 def tensor_value_histogram_autorange(tensor: Tensor, bins: Optional[int] = 100) -> Tuple[Tensor, Tensor]:
     if tensor.dtype not in safe_dtypes:
         tensor = tensor.to(torch.float32)
-    return torch.histogram(tensor, bins=bins)
+    return torch.histogram(tensor, Tensor(bins))
 
 
 def tensor_exponent_histogram_autorange(tensor: Tensor) -> Tuple[Tensor, Tensor]:

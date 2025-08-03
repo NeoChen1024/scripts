@@ -12,7 +12,7 @@ from kokoro import KPipeline
 
 
 class KokoroTTS:
-    def __init__(self, lang_code: Optional[str] = "a", device: Optional[str] = "cpu"):
+    def __init__(self, lang_code: str = "a", device: Optional[str] = "cpu"):
         self.device = device
         self.main_pipeline = KPipeline(lang_code=lang_code, device=device)
         self.chunk_pipeline = KPipeline(lang_code=lang_code, model=False, device="cpu")
@@ -30,10 +30,10 @@ class KokoroTTS:
         self,
         text: str,
         output_file: str,
-        voice: Optional[str] = "af_heart",
-        speed: Optional[float] = 1.0,
-        verbose: Optional[bool] = False,
-        tqdm_position: Optional[int] = 0,
+        voice: str = "af_heart",
+        speed: float = 1.0,
+        verbose: bool = False,
+        tqdm_position: int = 0,
     ):
         chunks = self._chunk_text(text)
         generator = self.main_pipeline(chunks, voice=voice, speed=speed)
