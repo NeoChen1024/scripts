@@ -4,22 +4,36 @@
 import base64
 import os
 import sys
-from io import BytesIO
-from typing import Dict, Optional, Tuple, List, Union, Any
 import threading
+from io import BytesIO
+from queue import Queue
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
 import humanize
 from openai import OpenAI
-from openai.types.chat import ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 from PIL import Image
-from rich import print
-from rich.traceback import install as install_traceback
 from rich.console import Console
 from rich.padding import Padding
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from rich.traceback import install as install_traceback
 
 console = Console()
 install_traceback(show_locals=True)
+
+print = console.print  # For convenience, use console.print instead of print
 
 
 # fallback: default -> environment variable -> override
@@ -144,9 +158,131 @@ def get_caption_for_image(
     return r.strip() + "\n"
 
 
+def process_captions_from_queue(
+    verbose: bool,
+    caption_extension: str,
+    existing_caption: str,
+    total_examples_payload_size: int,
+    no_downscale: bool,
+    queue: Queue,
+    client: OpenAI,
+    model_name: str,
+    vision_prompt: str,
+    examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+):
+    """
+    Process captions from a queue using the OpenAI client.
+    This function is designed to be run in a separate thread.
+    """
+    while True:
+        item = queue.get()
+        if item is None:  # None is used as a sentinel value to stop the thread
+            break
+        image_path: str = item
+        try:
+            caption_output_path = os.path.splitext(image_path)[0] + "." + caption_extension
+
+            if os.path.exists(caption_output_path) and existing_caption == "skip":
+                print("Caption file already exists, skipping...")
+                continue
+
+            caption_file = open(caption_output_path, "w", encoding="utf-8")
+
+            try:
+                image_base64 = get_image_base64(image_path, not no_downscale)
+            except Exception as e:
+                print(f"[red]Error processing image {image_path}: {e}[/red]")
+                caption_file.close()
+                continue
+
+            start_info_line = (
+                "[white on blue]>>[/white on blue] [yellow]"
+                + image_path
+                + "[/yellow] => [yellow]*."
+                + caption_extension
+                + "[/yellow], payload size: [bright_yellow]"
+                + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
+                + "[/bright_yellow]"
+            )
+            print(start_info_line)
+
+            caption_response = get_caption_for_image(
+                client,
+                model_name,
+                vision_prompt,
+                image_base64,
+                examples,
+                temperature,
+                max_tokens,
+            )
+            caption_response = caption_response.strip()
+            # log padded caption response
+            print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
+
+            caption_response += "\n"
+            caption_file.write(caption_response)
+            caption_file.flush()
+            if verbose:
+                print(
+                    "Caption saved to [yellow]"
+                    + caption_output_path
+                    + "[/yellow] ([bright_yellow]"
+                    + humanize.naturalsize(caption_file.tell(), binary=True)
+                    + "[/bright_yellow])"
+                    + "\n\n"
+                )
+            caption_file.close()
+            queue.task_done()
+        except Exception as e:
+            print(f"[red]Error processing item from queue: {e}[/red]")
+            queue.task_done()
+
+
 def panic(e: str):
     print("[red]Error:\t" + e + "[/red]")
     sys.exit(1)
+
+
+def scan_files(paths: List[str], caption_extension: str) -> List[str]:
+    result = []
+    for path in paths:
+        if os.path.isdir(path):
+            for root, _, files in os.walk(path):
+                for file in files:
+                    # try checking if the file is an image
+                    try:
+                        if os.path.exists(os.path.join(root, file)) and not file.lower().endswith(("." + caption_extension)):
+                            # check if the file is a valid image
+                            img = Image.open(os.path.join(root, file))
+                            img.verify()
+                            result.append(os.path.join(root, file))
+                    except Exception:
+                        continue
+        elif os.path.isfile(path):
+            result.append(path)
+    return result
+
+
+default_vision_prompt = """\
+You are an expert image analyst. Your purpose is to generate highly detailed, objective, and literal descriptions of images.
+These descriptions will be used as high-quality training data for a text-to-image AI generator.
+
+Your task is to create a single, cohesive paragraph of natural language that describes the provided image.
+
+**Key requirements for the description:**
+- **Be hyper-descriptive and specific:** The goal is to capture every visual detail possible.
+- **Include diverse attributes:** Mention elements like ethnicity, gender, age, facial expressions, eye color, hair color and style, clothing, and accessories for any people present.
+- **Describe the environment:** Detail the setting, objects, background, and overall context.
+- **Capture action and mood:** Describe what is happening, the interactions between subjects, and the overall atmosphere (e.g., joyful, serene, chaotic).
+- **Specify visual composition:** Mention camera angle (e.g., eye-level shot, low-angle shot, aerial view), lighting (e.g., soft morning light, harsh noon sun, neon glow), and focus (e.g., shallow depth of field with a blurry background).
+
+**Strict constraints (What NOT to do):**
+- **DO NOT** refer to the image as an "image", "photo", "picture", or any similar term.
+- **DO NOT** start the caption with phrases like "An image of...", "This is a photo of...", "The image shows...".
+- **DO NOT** interpret or add information that is not visually present. Be objective and literal.
+"""
 
 
 @click.command()
@@ -189,7 +325,7 @@ def panic(e: str):
     help="Override LLM base URL (default: from LLM_BASE_URL environment variable).",
 )
 @click.option(
-    "-t",
+    "-tp",
     "--temperature",
     type=float,
     default=None,
@@ -209,18 +345,28 @@ def panic(e: str):
     default="overwrite",
     type=click.Choice(["overwrite", "skip"]),
     help='"overwrite" or "skip" existing caption file.',
+    show_default=True,
 )
 @click.option(
     "-ce",
     "--caption-extension",
     default="txt",
-    help="Caption file extension (default: txt).",
+    help="Caption file extension",
+    show_default=True,
 )
 @click.option(
     "--no-downscale",
     "-nd",
     is_flag=True,
     help="Disable image downscaling before uploading.",
+)
+@click.option(
+    "-t",
+    "--threads",
+    default=1,
+    type=int,
+    help="Number of threads to use for calling VLM API.",
+    show_default=True,
 )
 def __main__(
     file_paths,
@@ -236,17 +382,28 @@ def __main__(
     caption_extension,
     no_downscale,
     examples_dir,
+    threads,
 ):
     """
     Generate image captions for one or more image files.
     """
+    # Scan the file paths
+    if not file_paths:
+        console.log("[red]Error: No input files provided.[/red]")
+        sys.exit(1)
+    # recursively resolve file paths
+    file_paths = scan_files(file_paths, caption_extension)
+    print(f"[bright_yellow]INFO:[/bright_yellow] Found {len(file_paths)} image(s) to process.")
+    if not file_paths:
+        console.log("[red]Error: No valid image files found.[/red]")
+        sys.exit(1)
     # Validate arguments
     if len(file_paths) > 1 and caption_output is not None:
-        console.log("Error: Can't use --caption_output with multiple input images")
+        print("Error: Can't use --caption_output with multiple input images")
         sys.exit(1)
 
     if caption_output is not None and not caption_output.endswith("." + caption_extension):
-        console.log("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if --caption_output is provided")
+        print("[bright_yellow]INFO:[/bright_yellow] Caption extension will be ignored if --caption_output is provided")
 
     # API key resolution
     final_api_key = _fallback_environment("xxxx", "LLM_API_KEY", api_key)
@@ -258,24 +415,7 @@ def __main__(
     final_base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
 
     # Set default vision prompt
-    vision_prompt = """
-You are an expert image analyst. Your purpose is to generate highly detailed, objective, and literal descriptions of images.
-These descriptions will be used as high-quality training data for a text-to-image AI generator.
-
-Your task is to create a single, cohesive paragraph of natural language that describes the provided image.
-
-**Key requirements for the description:**
-- **Be hyper-descriptive and specific:** The goal is to capture every visual detail possible.
-- **Include diverse attributes:** Mention elements like ethnicity, gender, age, facial expressions, eye color, hair color and style, clothing, and accessories for any people present.
-- **Describe the environment:** Detail the setting, objects, background, and overall context.
-- **Capture action and mood:** Describe what is happening, the interactions between subjects, and the overall atmosphere (e.g., joyful, serene, chaotic).
-- **Specify visual composition:** Mention camera angle (e.g., eye-level shot, low-angle shot, aerial view), lighting (e.g., soft morning light, harsh noon sun, neon glow), and focus (e.g., shallow depth of field with a blurry background).
-
-**Strict constraints (What NOT to do):**
-- **DO NOT** refer to the image as an "image", "photo", "picture", or any similar term.
-- **DO NOT** start the caption with phrases like "An image of...", "This is a photo of...", "The image shows...".
-- **DO NOT** interpret or add information that is not visually present. Be objective and literal.
-    """
+    vision_prompt = default_vision_prompt
 
     if vision_prompt_file is not None:
         try:
@@ -296,86 +436,144 @@ Your task is to create a single, cohesive paragraph of natural language that des
 
     if verbose:
         print("================================================")
-        print("Model:\t\t[cyan]" + model_name + "[/cyan]")
         print("Base URL:\t[cyan]" + final_base_url + "[/cyan]")
+        print("Model:\t\t[cyan]" + model_name + "[/cyan]")
         print("Temperature:\t[cyan]" + str(temperature) + "[/cyan]")
         print("Max tokens:\t[cyan]" + str(max_tokens) + "[/cyan]")
-        print("Examples:\t\t[cyan]" + str(len(examples) // 2) + "[/cyan]")
+        print(
+            "Examples:\t[cyan]"
+            + str(len(examples) // 2)
+            + "[/cyan]"
+            + ", size: [cyan]"
+            + humanize.naturalsize(total_examples_payload_size, binary=True)
+            + "[/cyan]"
+        )
         print("================================================")
 
     # Initialize OpenAI client
     client = OpenAI(api_key=final_api_key, base_url=final_base_url)
 
+    if len(file_paths) == 1:
+        # single image
+        image_path = file_paths[0]
+        caption_output_path = caption_output
+        filename_info_line = ""
+        if caption_output_path is None:
+            filename_info_line = (
+                "[white on blue]>>[/white on blue] [yellow]" + image_path + "[/yellow] => [yellow]*." + caption_extension
+            )
+            caption_output_path = os.path.splitext(image_path)[0] + "." + caption_extension
+        else:
+            filename_info_line = (
+                "[white on blue]>>[/white on blue] [yellow]"
+                + image_path
+                + "[/yellow] => [yellow]"
+                + caption_output_path
+                + "[/yellow]"
+            )
+        print(filename_info_line)
+        caption_file = open(caption_output_path, "w", encoding="utf-8")
+
+        image_base64 = get_image_base64(image_path, not no_downscale)
+
+        if verbose:
+            print(
+                "Payload size: [bright_yellow]"
+                + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
+                + "[/bright_yellow]"
+            )
+            print("Caption:")
+
+        caption_response = get_caption_for_image(
+            client,
+            model_name,
+            vision_prompt,
+            image_base64,
+            examples,
+            temperature,
+            max_tokens,
+        )
+        caption_response = caption_response.strip()
+        # log padded caption response
+        print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
+
+        caption_response += "\n"
+        caption_file.write(caption_response)
+        caption_file.flush()
+        if verbose:
+            print(
+                "Caption saved to [yellow]"
+                + caption_output_path
+                + "[/yellow] ([bright_yellow]"
+                + humanize.naturalsize(caption_file.tell(), binary=True)
+                + "[/bright_yellow])"
+                + "\n\n"
+            )
+        sys.exit(0)
+
+    max_threads = min(threads, len(file_paths))
+    image_queue = Queue(maxsize=max_threads)  # stores the image paths to process
+    # Start worker threads
+    workers = []
+    for _ in range(max_threads):
+        worker = threading.Thread(
+            target=process_captions_from_queue,
+            args=(
+                verbose,
+                caption_extension,
+                existing_caption,
+                total_examples_payload_size,
+                no_downscale,
+                image_queue,
+                client,
+                model_name,
+                vision_prompt,
+                examples,
+                temperature,
+                max_tokens,
+            ),
+        )
+        worker.daemon = True
+        worker.start()
+        workers.append(worker)
+
     try:
-        for file_path in file_paths:
-            this_caption_output = caption_output
-            filename_info_line = ""
-            if this_caption_output is None:
-                filename_info_line = (
-                    "[white on blue]>>[/white on blue] [yellow]" + file_path + "[/yellow] => [yellow]*." + caption_extension
-                )
-                this_caption_output = os.path.splitext(file_path)[0] + "." + caption_extension
-            else:
-                filename_info_line = (
-                    "[white on blue]>>[/white on blue] [yellow]"
-                    + file_path
-                    + "[/yellow] => [yellow]"
-                    + this_caption_output
-                    + "[/yellow]"
-                )
+        with Progress(
+            SpinnerColumn(),
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("[cyan]Queueing images...", total=len(file_paths))
+            for file_path in file_paths:
+                progress.update(task, advance=1, description=f"[cyan]Added: {os.path.basename(file_path)}")
+                image_queue.put(file_path)
 
-            if verbose:
-                console.log(filename_info_line)
+            progress.update(task, completed=len(file_paths), description="[green]All images queued![/green]")
+        # wait for all tasks to be done
+        print("[bright_yellow]INFO:[/bright_yellow] All images queued, waiting for processing to finish...")
+        image_queue.join()
+        print("[bright_yellow]INFO:[/bright_yellow] All images processed.")
+        for _ in range(max_threads):
+            image_queue.put(None)
 
-            if os.path.exists(this_caption_output) and existing_caption == "skip":
-                console.log("Caption file already exists, skipping...")
-                continue
-
-            caption_file = open(this_caption_output, "w", encoding="utf-8")
-
+    except KeyboardInterrupt:
+        print("[red]Interrupted by user, draining queue...[/red]")
+        while True:
             try:
-                image_base64 = get_image_base64(file_path, not no_downscale)
-            except Exception as e:
-                console.log(f"[red]Error processing image {file_path}: {e}[/red]")
-                caption_file.close()
-                continue
-
-            if verbose:
-                console.log(
-                    "Payload size: [bright_yellow]"
-                    + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
-                    + "[/bright_yellow]"
-                )
-                console.log("Caption:")
-
-                caption_response = get_caption_for_image(
-                    client,
-                    model_name,
-                    vision_prompt,
-                    image_base64,
-                    examples,
-                    temperature,
-                    max_tokens,
-                )
-                padded_response = Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
-                if verbose:
-                    console.log(padded_response)
-                else:
-                    print(filename_info_line)
-                    print(padded_response)
-
-                caption_response += "\n"
-                caption_file.write(caption_response)
-                caption_file.flush()
-                if verbose:
-                    console.log(
-                        "Caption saved to [yellow]"
-                        + this_caption_output
-                        + "[/yellow] ([bright_yellow]"
-                        + humanize.naturalsize(caption_file.tell(), binary=True)
-                        + "[/bright_yellow])"
-                    )
-                caption_file.close()
+                image_queue.get(timeout=0.1)
+            except Exception:
+                break
+        print("[red]Queue drained, stopping workers...[/red]")
+        for _ in range(max_threads):
+            image_queue.put(None)
+        for worker in workers:
+            worker.join()
+        print("[red]Processing stopped.[/red]")
+        sys.exit(1)
 
     except Exception as e:
         console.log(f"[red]Error: {e}[/red]")
