@@ -62,7 +62,7 @@ def get_image_base64(image_or_path: Union[str, Image.Image], downscale: bool = T
 
 
 def load_examples_from_dir(
-    examples_dir: str, downscale: bool = True, size: tuple[int, int] = (2048, 2048)
+    examples_dir: str, vision_prompt: str, downscale: bool = True, size: tuple[int, int] = (2048, 2048)
 ) -> Tuple[int, List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]]:
     examples = []
     total_payload_size = 0
@@ -94,7 +94,7 @@ def load_examples_from_dir(
                     ChatCompletionUserMessageParam(
                         role="user",
                         content=[
-                            {"type": "text", "text": "Generate the caption for the following image."},
+                            {"type": "text", "text": vision_prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
@@ -449,7 +449,7 @@ def __main__(
     if examples_dir is not None:
         if verbose:
             console.log(f"Loading examples from directory: [yellow]{examples_dir}[/yellow]")
-        total_examples_payload_size, examples = load_examples_from_dir(examples_dir, not no_downscale)
+        total_examples_payload_size, examples = load_examples_from_dir(examples_dir, vision_prompt, not no_downscale)
         if not examples:
             panic("No valid examples found in the specified directory.")
 
