@@ -184,6 +184,7 @@ def process_captions_from_queue(
 
             if os.path.exists(caption_output_path) and existing_caption == "skip":
                 print(f"Caption file for {image_path} already exists, skipping...")
+                queue.task_done()
                 continue
 
             caption_file = open(caption_output_path, "w", encoding="utf-8")
