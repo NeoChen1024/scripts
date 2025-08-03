@@ -115,6 +115,7 @@ def load_examples_from_dir(
 def get_caption_for_image(
     client: OpenAI,
     model_name: str,
+    system_prompt: str,
     vision_prompt: str,
     image_base64: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
@@ -129,7 +130,7 @@ def get_caption_for_image(
     messages: List[Union[ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam]] = [
         ChatCompletionSystemMessageParam(
             role="system",
-            content=vision_prompt,
+            content=system_prompt,
         )
     ]
     if examples is not None:
@@ -138,7 +139,7 @@ def get_caption_for_image(
         ChatCompletionUserMessageParam(
             role="user",
             content=[
-                {"type": "text", "text": "Generate the caption for the following image."},
+                {"type": "text", "text": vision_prompt},
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
@@ -167,6 +168,7 @@ def process_captions_from_queue(
     queue: Queue,
     client: OpenAI,
     model_name: str,
+    system_prompt: str,
     vision_prompt: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
     temperature: Optional[float] = None,
@@ -210,6 +212,7 @@ def process_captions_from_queue(
             caption_response = get_caption_for_image(
                 client,
                 model_name,
+                system_prompt,
                 vision_prompt,
                 image_base64,
                 examples,
@@ -265,7 +268,7 @@ def scan_files(paths: List[str], caption_extension: str) -> List[str]:
     return result
 
 
-default_vision_prompt = """\
+default_system_prompt = """\
 You are an expert image analyst. Your purpose is to generate highly detailed, objective, and literal descriptions of images.
 These descriptions will be used as high-quality training data for a text-to-image AI generator.
 
@@ -284,6 +287,8 @@ Your task is to create a single, cohesive paragraph of natural language that des
 - **DO NOT** interpret or add information that is not visually present. Be objective and literal.
 """
 
+default_vision_prompt = "Generate the caption for the following image."
+
 
 @click.command()
 @click.argument("file_paths", nargs=-1, required=True)
@@ -301,10 +306,16 @@ Your task is to create a single, cohesive paragraph of natural language that des
     help="Path to save the caption output. Can't be used with multiple images.",
 )
 @click.option(
-    "-vp",
-    "--vision-prompt-file",
+    "-sp",
+    "--system-prompt",
     default=None,
-    help="Vision prompt file for caption generation (default: built-in).",
+    help="System prompt or path to the file for caption generation (default: built-in).",
+)
+@click.option(
+    "-vp",
+    "--vision-prompt",
+    default=None,
+    help="Vision prompt or path to the file for caption generation (default: built-in).",
 )
 @click.option(
     "-m",
@@ -371,7 +382,8 @@ Your task is to create a single, cohesive paragraph of natural language that des
 def __main__(
     file_paths,
     caption_output,
-    vision_prompt_file,
+    system_prompt,
+    vision_prompt,
     model,
     api_key,
     base_url,
@@ -414,15 +426,22 @@ def __main__(
     # Base URL resolution
     final_base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
 
-    # Set default vision prompt
-    vision_prompt = default_vision_prompt
-
-    if vision_prompt_file is not None:
+    if system_prompt is not None:
         try:
-            with open(vision_prompt_file, "r", encoding="utf-8") as f:
+            with open(system_prompt, "r", encoding="utf-8") as f:
+                system_prompt = f.read()
+        except Exception as e:
+            pass
+    else:
+        system_prompt = default_system_prompt
+    if vision_prompt is not None:
+        try:
+            with open(vision_prompt, "r", encoding="utf-8") as f:
                 vision_prompt = f.read()
         except Exception as e:
-            panic(str(e))
+            pass
+    else:
+        vision_prompt = default_vision_prompt
 
     # Process examples directory if provided
     examples = []
@@ -448,6 +467,11 @@ def __main__(
             + humanize.naturalsize(total_examples_payload_size, binary=True)
             + "[/cyan]"
         )
+        print("================================================")
+        print("System prompt:\n")
+        print(Padding("[green]" + system_prompt + "[/green]", (0, 0, 0, 4)))
+        print("\nVision prompt:\n")
+        print(Padding("[green]" + vision_prompt + "[/green]", (0, 0, 0, 4)))
         print("================================================")
 
     # Initialize OpenAI client
@@ -487,6 +511,7 @@ def __main__(
         caption_response = get_caption_for_image(
             client,
             model_name,
+            system_prompt,
             vision_prompt,
             image_base64,
             examples,
@@ -527,6 +552,7 @@ def __main__(
                 image_queue,
                 client,
                 model_name,
+                system_prompt,
                 vision_prompt,
                 examples,
                 temperature,
