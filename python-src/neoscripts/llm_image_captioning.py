@@ -200,9 +200,9 @@ def process_captions_from_queue(
                 + image_path
                 + "[/yellow] => [yellow]*."
                 + caption_extension
-                + "[/yellow], payload size: [bright_yellow]"
+                + "[/yellow], payload size: [bright_cyan]"
                 + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
-                + "[/bright_yellow]"
+                + "[/bright_cyan]"
             )
 
             if api_args is None:
@@ -505,9 +505,9 @@ def __main__(
 
         if verbose:
             print(
-                "Payload size: [bright_yellow]"
+                "Payload size: [bright_cyan]"
                 + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
-                + "[/bright_yellow]"
+                + "[/bright_cyan]"
             )
             print("Caption:")
 
