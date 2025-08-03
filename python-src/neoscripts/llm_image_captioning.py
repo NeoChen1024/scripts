@@ -577,7 +577,7 @@ def __main__(
             task = progress.add_task("captioning", total=len(file_paths))
             for file_path in file_paths:
                 image_queue.put(file_path)
-                progress.update(task, advance=1, description=f"[cyan]Queued: {os.path.basename(file_path)}")
+                progress.update(task, advance=1, description=f"[bright_yellow]Queued: {os.path.basename(file_path)} [/bright_yellow]")
 
             progress.update(task, completed=len(file_paths), description="[green]All images queued![/green]")
         # wait for all tasks to be done
