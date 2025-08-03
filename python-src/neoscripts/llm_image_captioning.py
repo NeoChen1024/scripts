@@ -217,9 +217,8 @@ def process_captions_from_queue(
                 api_args
             )
             caption_response = caption_response.strip()
-            # log padded caption response
-            print(file_info_line)
-            print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
+            # log file info + padded caption response
+            print(file_info_line, Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
             caption_response += "\n"
             caption_file.write(caption_response)
