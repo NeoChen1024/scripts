@@ -197,7 +197,7 @@ def process_captions_from_queue(
                 caption_file.close()
                 continue
 
-            start_info_line = (
+            file_info_line = (
                 "[white on blue]>>[/white on blue] [yellow]"
                 + image_path
                 + "[/yellow] => [yellow]*."
@@ -206,7 +206,6 @@ def process_captions_from_queue(
                 + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
                 + "[/bright_yellow]"
             )
-            print(start_info_line)
 
             caption_response = get_caption_for_image(
                 client,
@@ -219,6 +218,7 @@ def process_captions_from_queue(
             )
             caption_response = caption_response.strip()
             # log padded caption response
+            print(file_info_line)
             print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
             caption_response += "\n"
