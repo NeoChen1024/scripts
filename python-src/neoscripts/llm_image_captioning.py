@@ -183,7 +183,7 @@ def process_captions_from_queue(
             caption_output_path = os.path.splitext(image_path)[0] + "." + caption_extension
 
             if os.path.exists(caption_output_path) and existing_caption == "skip":
-                print("Caption file already exists, skipping...")
+                print(f"Caption file for {image_path} already exists, skipping...")
                 continue
 
             caption_file = open(caption_output_path, "w", encoding="utf-8")
@@ -499,6 +499,9 @@ def __main__(
                 + "[/yellow]"
             )
         print(filename_info_line)
+        if existing_caption == "skip" and os.path.exists(caption_output_path):
+            print("[bright_yellow]INFO:[/bright_yellow] Caption file already exists, skipping...")
+            sys.exit(0)
         caption_file = open(caption_output_path, "w", encoding="utf-8")
 
         image_base64 = get_image_base64(image_path, not no_downscale)
