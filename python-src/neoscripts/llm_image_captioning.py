@@ -214,7 +214,7 @@ def process_captions_from_queue(
                 vision_prompt,
                 image_base64,
                 examples,
-                **api_args
+                api_args
             )
             caption_response = caption_response.strip()
             # log padded caption response
