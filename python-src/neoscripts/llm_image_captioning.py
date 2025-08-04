@@ -120,7 +120,7 @@ def get_caption_for_image(
     image_base64: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
     api_args: Optional[Dict[str, Any]] = None,
-) -> str:
+) -> Tuple[int, str]:
     kwarg = {}
     if api_args is not None:
         kwarg.update(api_args)
@@ -150,16 +150,24 @@ def get_caption_for_image(
         messages=messages,
         **kwarg,
     )
-    r = chat_response.choices[0].message.content
-    if r is None:
+    generated_caption = chat_response.choices[0].message.content
+    if generated_caption is None:
         raise ValueError("Caption generation failed, no content returned.")
-    return r.strip() + "\n"
+    generated_caption = generated_caption.strip() + "\n"
+
+    token_count = chat_response.usage.total_tokens if chat_response.usage else 0
+
+    return token_count, generated_caption
+
+
+def get_caption_output_path(image_path: str, caption_extension: str) -> str:
+    filename, extension = os.path.splitext(image_path)
+    return filename + "." + caption_extension
 
 
 def process_captions_from_queue(
     verbose: bool,
     caption_extension: str,
-    existing_caption: str,
     total_examples_payload_size: int,
     no_downscale: bool,
     queue: Queue,
@@ -180,12 +188,7 @@ def process_captions_from_queue(
             break
         image_path: str = item
         try:
-            caption_output_path = os.path.splitext(image_path)[0] + "." + caption_extension
-
-            if os.path.exists(caption_output_path) and existing_caption == "skip":
-                print(f"Caption file for {image_path} already exists, skipping...")
-                queue.task_done()
-                continue
+            caption_output_path = get_caption_output_path(image_path, caption_extension)
 
             caption_file = open(caption_output_path, "w", encoding="utf-8")
 
@@ -208,32 +211,23 @@ def process_captions_from_queue(
 
             if api_args is None:
                 api_args = {}
-            caption_response = get_caption_for_image(
-                client,
-                model_name,
-                system_prompt,
-                vision_prompt,
-                image_base64,
-                examples,
-                api_args
+            token_cost, caption_response = get_caption_for_image(
+                client, model_name, system_prompt, vision_prompt, image_base64, examples, api_args
             )
-            caption_response = caption_response.strip()
             # log file info + padded caption response
             print(file_info_line, Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
-            caption_response += "\n"
             caption_file.write(caption_response)
-            caption_file.flush()
+            caption_file.close()
             if verbose:
                 print(
                     "Caption saved to [yellow]"
                     + caption_output_path
                     + "[/yellow] ([bright_yellow]"
-                    + humanize.naturalsize(caption_file.tell(), binary=True)
+                    + humanize.metric(token_cost, "tokens")
                     + "[/bright_yellow])"
                     + "\n\n"
                 )
-            caption_file.close()
             queue.task_done()
         except Exception as e:
             print(f"[red]Error processing item from queue: {e}[/red]")
@@ -432,7 +426,7 @@ def __main__(
             pass
     else:
         vision_prompt = default_vision_prompt
-    
+
     final_api_args: Optional[Dict[str, Any]] = None
     if api_args is not None:
         try:
@@ -515,28 +509,20 @@ def __main__(
             )
             print("Caption:")
 
-        caption_response = get_caption_for_image(
-            client,
-            model_name,
-            system_prompt,
-            vision_prompt,
-            image_base64,
-            examples,
-            final_api_args
+        token_count, caption_response = get_caption_for_image(
+            client, model_name, system_prompt, vision_prompt, image_base64, examples, final_api_args
         )
-        caption_response = caption_response.strip()
         # log padded caption response
         print(Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
 
-        caption_response += "\n"
         caption_file.write(caption_response)
-        caption_file.flush()
+        caption_file.close()
         if verbose:
             print(
                 "Caption saved to [yellow]"
                 + caption_output_path
                 + "[/yellow] ([bright_yellow]"
-                + humanize.naturalsize(caption_file.tell(), binary=True)
+                + humanize.metric(token_count, "tokens")
                 + "[/bright_yellow])"
                 + "\n\n"
             )
@@ -552,7 +538,6 @@ def __main__(
             args=(
                 verbose,
                 caption_extension,
-                existing_caption,
                 total_examples_payload_size,
                 no_downscale,
                 image_queue,
@@ -580,7 +565,10 @@ def __main__(
         ) as progress:
             task = progress.add_task("captioning", total=len(file_paths))
             for file_path in file_paths:
-                image_queue.put(file_path)
+                if existing_caption == "skip" and os.path.exists(get_caption_output_path(file_path, caption_extension)):
+                    print(f"[bright_yellow]INFO:[/bright_yellow] Caption file already exists for {file_path}, skipping...")
+                else:
+                    image_queue.put(file_path)
                 progress.update(task, advance=1, description=f"[bright_yellow]Queued: {file_path} [/bright_yellow]")
 
             progress.update(task, completed=len(file_paths), description="[green]All images queued![/green]")
