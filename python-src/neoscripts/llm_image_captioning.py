@@ -46,7 +46,9 @@ def _fallback_environment(default: str, env_var: str, override: Optional[str] = 
     return val
 
 
-def get_image_base64(image_or_path: Union[str, Image.Image], downscale: bool = True, size: Tuple[int, int] = (2048, 2048)) -> str:
+def get_image_base64(
+    image_or_path: Union[str, Image.Image], downscale: bool = True, lossless: bool = False, size: Tuple[int, int] = (2048, 2048)
+) -> str:
     """
     Convert an image (PIL.Image or file path) to a base64-encoded JPEG string.
     Downscale if requested. Uses efficient in-memory operations.
@@ -57,12 +59,20 @@ def get_image_base64(image_or_path: Union[str, Image.Image], downscale: bool = T
     if downscale:
         img.thumbnail(size, Image.Resampling.LANCZOS)
     with BytesIO() as output:
-        img.save(output, format="JPEG", quality=90, optimize=True)
-        return base64.b64encode(output.getvalue()).decode("utf-8")
+        if lossless:
+            img.save(output, format="PNG", optimize=True)
+            base64_url_prefix = "data:image/png;base64,"
+        else:
+            # Use JPEG with quality=90 for better compression
+            img.save(output, format="JPEG", quality=90, optimize=True)
+            base64_url_prefix = "data:image/jpeg;base64,"
+
+        base64_str = base64.b64encode(output.getvalue()).decode("utf-8")
+    return f"{base64_url_prefix}{base64_str}"
 
 
 def load_examples_from_dir(
-    examples_dir: str, vision_prompt: str, downscale: bool = True, size: tuple[int, int] = (2048, 2048)
+    examples_dir: str, vision_prompt: str, downscale: bool = True, lossless: bool = False, size: tuple[int, int] = (2048, 2048)
 ) -> Tuple[int, List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]]:
     examples = []
     total_payload_size = 0
@@ -87,7 +97,7 @@ def load_examples_from_dir(
             if not caption:
                 console.log(f"[red]Warning:[/red] Caption file {caption_file} is empty for example {example_file}. Skipping.")
                 continue
-            image_base64 = get_image_base64(image, downscale, size)
+            image_base64 = get_image_base64(image, downscale, lossless, size)
             total_payload_size += len(image_base64)
             examples.extend(
                 [
@@ -97,7 +107,7 @@ def load_examples_from_dir(
                             {"type": "text", "text": vision_prompt},
                             {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                                "image_url": {"url": f"{image_base64}"},
                             },
                         ],
                     ),
@@ -120,7 +130,7 @@ def get_caption_for_image(
     image_base64: str,
     examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
     api_args: Optional[Dict[str, Any]] = None,
-) -> Tuple[int, str]:
+) -> Tuple[Tuple[int, int], str]:
     kwarg = {}
     if api_args is not None:
         kwarg.update(api_args)
@@ -139,7 +149,7 @@ def get_caption_for_image(
                 {"type": "text", "text": vision_prompt},
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    "image_url": {"url": f"{image_base64}"},
                 },
             ],
         )
@@ -154,8 +164,10 @@ def get_caption_for_image(
     if generated_caption is None:
         raise ValueError("Caption generation failed, no content returned.")
     generated_caption = generated_caption.strip() + "\n"
-
-    token_count = chat_response.usage.total_tokens if chat_response.usage else 0
+    if chat_response.usage:
+        token_count = (chat_response.usage.prompt_tokens, chat_response.usage.completion_tokens)
+    else:
+        token_count = (0, 0)
 
     return token_count, generated_caption
 
@@ -170,6 +182,8 @@ def process_captions_from_queue(
     caption_extension: str,
     total_examples_payload_size: int,
     no_downscale: bool,
+    lossless: bool,
+    resolution: Tuple[int, int],
     queue: Queue,
     client: OpenAI,
     model_name: str,
@@ -192,12 +206,7 @@ def process_captions_from_queue(
 
             caption_file = open(caption_output_path, "w", encoding="utf-8")
 
-            try:
-                image_base64 = get_image_base64(image_path, not no_downscale)
-            except Exception as e:
-                print(f"[red]Error processing image {image_path}: {e}[/red]")
-                caption_file.close()
-                continue
+            image_base64 = get_image_base64(image_path, not no_downscale, lossless, resolution)
 
             file_info_line = (
                 "[white on blue]>>[/white on blue] [yellow]"
@@ -215,7 +224,14 @@ def process_captions_from_queue(
                 client, model_name, system_prompt, vision_prompt, image_base64, examples, api_args
             )
             # log file info + padded caption response
-            print(file_info_line, Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)))
+            print(file_info_line
+                    + " (Input [bright_yellow]"
+                    + humanize.metric(token_cost[0], "T")
+                    + "[/bright_yellow], Output [bright_yellow]"
+                    + humanize.metric(token_cost[1], "T")
+                    + "[/bright_yellow])",
+                    Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
+                )
 
             caption_file.write(caption_response)
             caption_file.close()
@@ -223,9 +239,6 @@ def process_captions_from_queue(
                 print(
                     "Caption saved to [yellow]"
                     + caption_output_path
-                    + "[/yellow] ([bright_yellow]"
-                    + humanize.metric(token_cost, "tokens")
-                    + "[/bright_yellow])"
                     + "\n\n"
                 )
             queue.task_done()
@@ -357,6 +370,20 @@ default_vision_prompt = "Generate the caption for the following image."
     help="Disable image downscaling before uploading.",
 )
 @click.option(
+    "-ll",
+    "--lossless",
+    is_flag=True,
+    help="Use PNG compression for images (default: JPEG with quality=90).",
+)
+@click.option(
+    "-res",
+    "--resolution",
+    default=(2048, 2048),
+    type=(int, int),
+    help="Downscale to resolution (width, height) before uploading.",
+    show_default=True,
+)
+@click.option(
     "-t",
     "--threads",
     default=1,
@@ -377,6 +404,8 @@ def __main__(
     existing_caption,
     caption_extension,
     no_downscale,
+    lossless,
+    resolution,
     examples_dir,
     threads,
 ):
@@ -447,7 +476,9 @@ def __main__(
     if examples_dir is not None:
         if verbose:
             console.log(f"Loading examples from directory: [yellow]{examples_dir}[/yellow]")
-        total_examples_payload_size, examples = load_examples_from_dir(examples_dir, vision_prompt, not no_downscale)
+        total_examples_payload_size, examples = load_examples_from_dir(
+            examples_dir, vision_prompt, not no_downscale, lossless, resolution
+        )
         if not examples:
             panic("No valid examples found in the specified directory.")
 
@@ -484,7 +515,7 @@ def __main__(
             filename_info_line = (
                 "[white on blue]>>[/white on blue] [yellow]" + image_path + "[/yellow] => [yellow]*." + caption_extension
             )
-            caption_output_path = os.path.splitext(image_path)[0] + "." + caption_extension
+            caption_output_path = get_caption_output_path(image_path, caption_extension)
         else:
             filename_info_line = (
                 "[white on blue]>>[/white on blue] [yellow]"
@@ -499,7 +530,7 @@ def __main__(
             sys.exit(0)
         caption_file = open(caption_output_path, "w", encoding="utf-8")
 
-        image_base64 = get_image_base64(image_path, not no_downscale)
+        image_base64 = get_image_base64(image_path, not no_downscale, lossless, resolution)
 
         if verbose:
             print(
@@ -521,8 +552,10 @@ def __main__(
             print(
                 "Caption saved to [yellow]"
                 + caption_output_path
-                + "[/yellow] ([bright_yellow]"
-                + humanize.metric(token_count, "tokens")
+                + "[/yellow] (Input [bright_yellow]"
+                + humanize.metric(token_count[0], "T")
+                + "[/bright_yellow] Output [bright_yellow]"
+                + humanize.metric(token_count[1], "T")
                 + "[/bright_yellow])"
                 + "\n\n"
             )
@@ -540,6 +573,8 @@ def __main__(
                 caption_extension,
                 total_examples_payload_size,
                 no_downscale,
+                lossless,
+                resolution,
                 image_queue,
                 client,
                 model_name,
