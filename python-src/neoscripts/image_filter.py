@@ -100,7 +100,6 @@ def collate_fn(batch):
     help="Include HQ likeliness in the output filename",
 )
 @click.option(
-    "-m",
     "--mode",
     type=click.Choice(list(modes.keys())),
     default="copy",
