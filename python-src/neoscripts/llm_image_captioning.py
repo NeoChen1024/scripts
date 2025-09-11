@@ -5,6 +5,7 @@ import base64
 import os
 import sys
 import threading
+import json
 from io import BytesIO
 from queue import Queue
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -199,6 +200,7 @@ def process_captions_from_queue(
     while True:
         item = queue.get()
         if item is None:  # None is used as a sentinel value to stop the thread
+            queue.task_done()
             break
         image_path: str = item
         try:
@@ -462,7 +464,7 @@ def __main__(
             if os.path.exists(api_args):
                 with open(api_args, "r", encoding="utf-8") as f:
                     api_args = f.read()
-            final_api_args = eval(api_args)  # Convert JSON string to dict
+            final_api_args = json.loads(api_args)
             if not isinstance(final_api_args, dict):
                 raise ValueError("API arguments must be a JSON object.")
         except Exception as e:
