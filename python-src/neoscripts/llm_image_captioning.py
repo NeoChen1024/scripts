@@ -133,7 +133,7 @@ def get_caption_for_image(
     api_args: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Tuple[int, int], str]:
     kwarg = {}
-    if api_args is not None:
+    if api_args is not None and isinstance(api_args, dict):
         kwarg.update(api_args)
     messages: List[Union[ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam]] = [
         ChatCompletionSystemMessageParam(
@@ -205,9 +205,7 @@ def process_captions_from_queue(
         image_path: str = item
         try:
             caption_output_path = get_caption_output_path(image_path, caption_extension)
-
             caption_file = open(caption_output_path, "w", encoding="utf-8")
-
             image_base64 = get_image_base64(image_path, not no_downscale, lossless, resolution)
 
             file_info_line = (
@@ -220,33 +218,26 @@ def process_captions_from_queue(
                 + "[/bright_cyan]"
             )
 
-            if api_args is None:
-                api_args = {}
             token_cost, caption_response = get_caption_for_image(
                 client, model_name, system_prompt, vision_prompt, image_base64, examples, api_args
             )
             # log file info + padded caption response
-            print(file_info_line
-                    + " (Input [bright_yellow]"
-                    + humanize.metric(token_cost[0], "T")
-                    + "[/bright_yellow], Output [bright_yellow]"
-                    + humanize.metric(token_cost[1], "T")
-                    + "[/bright_yellow])",
-                    Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
-                )
+            if verbose:
+                print(file_info_line
+                        + " (Input [bright_yellow]"
+                        + humanize.metric(token_cost[0], "T")
+                        + "[/bright_yellow], Output [bright_yellow]"
+                        + humanize.metric(token_cost[1], "T")
+                        + "[/bright_yellow])",
+                        Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
+                    )
 
             caption_file.write(caption_response)
             caption_file.close()
-            if verbose:
-                print(
-                    "Caption saved to [yellow]"
-                    + caption_output_path
-                    + "\n\n"
-                )
             queue.task_done()
         except Exception as e:
-            print(f"[red]Error processing item from queue: {e}[/red]")
             queue.task_done()
+            print(f"[red]Error processing item from queue: {e}[/red]")
 
 
 def panic(e: str):
@@ -464,7 +455,7 @@ def __main__(
             if os.path.exists(api_args):
                 with open(api_args, "r", encoding="utf-8") as f:
                     api_args = f.read()
-            final_api_args = json.loads(api_args)
+            final_api_args = json.loads(api_args, parse_int=int, parse_float=float, parse_constant=str)
             if not isinstance(final_api_args, dict):
                 raise ValueError("API arguments must be a JSON object.")
         except Exception as e:
@@ -613,17 +604,22 @@ def __main__(
         print("[bright_yellow]INFO:[/bright_yellow] All images queued, waiting for processing to finish...")
         image_queue.join()
         print("[bright_yellow]INFO:[/bright_yellow] All images processed.")
-        for _ in range(max_threads):
+        for _ in range(max_threads * 2): # send stop signals to workers
             image_queue.put(None)
+        for worker in workers:
+            worker.join()
+        print("[green]Processing stopped.[/green]")
 
     except KeyboardInterrupt:
         print("[red]Interrupted by user, draining queue...[/red]")
+        drained_items = 0
         while True:
             try:
                 image_queue.get(timeout=0.1)
+                drained_items += 1
             except Exception:
                 break
-        print("[red]Queue drained, stopping workers...[/red]")
+        print(f"[red]Queue drained ({drained_items} items), stopping workers...[/red]")
         for _ in range(max_threads):
             image_queue.put(None)
         for worker in workers:
