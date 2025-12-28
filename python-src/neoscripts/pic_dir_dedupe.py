@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # A simple script to help deduplicate my pic directory
-# 4 different categories:
-# * "Portrait" -- images with subjects that are primarily vertical in orientation
-# * "Landscape" -- images with subjects that are primarily horizontal in orientation
+# 3 different categories:
+# * "Anime" -- images downloaded from various anime wallpaper sites, may contain duplicates with the following categories
 # * "Wallpaper" -- images that are hand-picked wallpapers, inspected manually to be of high quality
 # * "VWallpaper" -- same as above but vertical (for phones)
 #
-# The script will scan through the 4 directories, look for duplicates based on file name.
-# "Portrait" and "VWallpaper" are processed together, as are "Landscape" and "Wallpaper".
+# The script will scan through the 3 directories, look for duplicates based on file name.
 # If a file has duplicates, only one copy (preferably in Wallpaper or VWallpaper) is kept, and the rest are moved to a separate directory for manual inspection.
 # If duplicates are found, it will move them to a "duplicates" directory for manual inspection
 # Finally, it will print out a summary of the duplicates found.
@@ -26,8 +24,7 @@ from rich.console import Console
 from rich.text import Text
 import click
 
-PORTRAIT_DIRNAME = "Portrait"
-LANDSCAPE_DIRNAME = "Landscape"
+ANIME_DIRNAME = "Anime"
 WALLPAPER_DIRNAME = "Wallpaper"
 VWALLPAPER_DIRNAME = "VWallpaper"
 
@@ -102,10 +99,14 @@ def _find_and_handle_dupes(files: List[str], dupedir: str, dry_run: bool) -> Tup
         """
 
         dirname = os.path.basename(os.path.dirname(path))
-        if dirname in (WALLPAPER_DIRNAME, VWALLPAPER_DIRNAME):
+        if dirname == WALLPAPER_DIRNAME:
             score = 0
-        else:
+        elif dirname == VWALLPAPER_DIRNAME:
             score = 1
+        elif dirname == ANIME_DIRNAME:
+            score = 3
+        else:
+            score = 4
         return (score, path)
 
     for name, paths in sorted(name_groups.items()):
@@ -137,10 +138,10 @@ def _find_and_handle_dupes(files: List[str], dupedir: str, dry_run: bool) -> Tup
 def __main__(dry_run, inputdir, dupedir):
     """Deduplicate picture directories under ``inputdir``.
 
-    ``inputdir`` is expected to contain ``Portrait``, ``Landscape``,
+    ``inputdir`` is expected to contain ``Anime``,
     ``Wallpaper`` and ``VWallpaper`` directories.  Deduplication is
-    performed in two groups: Portrait+VWallpaper and
-    Landscape+Wallpaper.
+    performed in 3 groups: Anime+VWallpaper, Anime+Wallpaper, and
+    Wallpaper+VWallpaper.
 
     For files that have the same name across the group, only one copy
     is kept, preferring those located in ``Wallpaper``/``VWallpaper``.
@@ -151,29 +152,30 @@ def __main__(dry_run, inputdir, dupedir):
     inputdir = os.path.abspath(inputdir)
     dupedir = os.path.abspath(dupedir)
 
-    portrait_files = _iter_category_files(inputdir, PORTRAIT_DIRNAME)
-    landscape_files = _iter_category_files(inputdir, LANDSCAPE_DIRNAME)
+    anime_files = _iter_category_files(inputdir, ANIME_DIRNAME)
     wallpaper_files = _iter_category_files(inputdir, WALLPAPER_DIRNAME)
     vwallpaper_files = _iter_category_files(inputdir, VWALLPAPER_DIRNAME)
 
     console.print(f"Scanning directories under: {inputdir}", style="bold cyan")
-    console.print(f"  {PORTRAIT_DIRNAME}: {len(portrait_files)} files")
+    console.print(f"  {ANIME_DIRNAME}: {len(anime_files)} files")
     console.print(f"  {VWALLPAPER_DIRNAME}: {len(vwallpaper_files)} files")
-    console.print(f"  {LANDSCAPE_DIRNAME}: {len(landscape_files)} files")
     console.print(f"  {WALLPAPER_DIRNAME}: {len(wallpaper_files)} files")
 
-    # Process Portrait + VWallpaper together, and Landscape + Wallpaper
-    # together, as described in the header comments.
     total_sets = 0
     total_moved = 0
 
-    console.print("\nProcessing Portrait + VWallpaper group...", style="bold blue")
-    s, m = _find_and_handle_dupes(portrait_files + vwallpaper_files, dupedir, dry_run)
+    console.print("\nProcessing Anime + VWallpaper group...", style="bold blue")
+    s, m = _find_and_handle_dupes(anime_files + vwallpaper_files, dupedir, dry_run)
     total_sets += s
     total_moved += m
 
-    console.print("\nProcessing Landscape + Wallpaper group...", style="bold blue")
-    s, m = _find_and_handle_dupes(landscape_files + wallpaper_files, dupedir, dry_run)
+    console.print("\nProcessing Anime + Wallpaper group...", style="bold blue")
+    s, m = _find_and_handle_dupes(anime_files + wallpaper_files, dupedir, dry_run)
+    total_sets += s
+    total_moved += m
+
+    console.print("\nProcessing Wallpaper + VWallpaper group...", style="bold blue")
+    s, m = _find_and_handle_dupes(wallpaper_files + vwallpaper_files, dupedir, dry_run)
     total_sets += s
     total_moved += m
 
