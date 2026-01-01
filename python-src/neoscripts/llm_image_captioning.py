@@ -32,10 +32,11 @@ from rich.progress import (
 from rich.traceback import install as install_traceback
 
 console = Console()
-install_traceback(show_locals=True)
+install_traceback(show_locals=True, console=console)
 
 print = console.print  # For convenience, use console.print instead of print
 
+example_list = List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]
 
 # fallback: default -> environment variable -> override
 def _fallback_environment(default: str, env_var: str, override: Optional[str] = None) -> str:
@@ -85,8 +86,8 @@ def load_examples_from_dir(
             print(f"Loading example: [yellow]{example_file}[/yellow]")
             image_path = os.path.join(examples_dir, example_file)
             image = Image.open(image_path)
-            image.verify()  # PITFALL: verify() closes the file handle
-            image = Image.open(image_path)
+            image.load() # force loading image data, also verifies image integrity
+            # load corresponding caption
             # find a text file with the same name
             caption_file = os.path.splitext(example_file)[0] + ".txt"
             caption_path = os.path.join(examples_dir, caption_file)
@@ -129,7 +130,7 @@ def get_caption_for_image(
     system_prompt: str,
     vision_prompt: str,
     image_base64: str,
-    examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
+    examples: Optional[example_list] = None,
     api_args: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Tuple[int, int], str]:
     kwarg = {}
@@ -190,7 +191,7 @@ def process_captions_from_queue(
     model_name: str,
     system_prompt: str,
     vision_prompt: str,
-    examples: Optional[List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]] = None,
+    examples: Optional[example_list] = None,
     api_args: Optional[Dict[str, Any]] = None,
 ):
     """
@@ -208,27 +209,25 @@ def process_captions_from_queue(
             caption_file = open(caption_output_path, "w", encoding="utf-8")
             image_base64 = get_image_base64(image_path, not no_downscale, lossless, resolution)
 
-            file_info_line = (
-                "[white on blue]>>[/white on blue] [yellow]"
-                + image_path
-                + "[/yellow] => [yellow]*."
-                + caption_extension
-                + "[/yellow], payload size: [bright_cyan]"
-                + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
-                + "[/bright_cyan]"
-            )
-
             token_cost, caption_response = get_caption_for_image(
                 client, model_name, system_prompt, vision_prompt, image_base64, examples, api_args
             )
             # log file info + padded caption response
+            # one print call for better atomicity in multithreaded output
             if verbose:
-                print(file_info_line
+                print("[white on blue]>>[/white on blue] [yellow]"
+                        + image_path
+                        + "[/yellow] => [yellow]*."
+                        + caption_extension
+                        + "[/yellow], payload size: [bright_cyan]"
+                        + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
+                        + "[/bright_cyan]"
                         + " (Input [bright_yellow]"
                         + humanize.metric(token_cost[0], "T")
                         + "[/bright_yellow], Output [bright_yellow]"
                         + humanize.metric(token_cost[1], "T")
                         + "[/bright_yellow])",
+                        # on separate line, print padded caption response
                         Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
                     )
 
@@ -254,9 +253,10 @@ def scan_files(paths: List[str], caption_extension: str) -> List[str]:
                     # try checking if the file is an image
                     try:
                         if os.path.exists(os.path.join(root, file)) and not file.lower().endswith(("." + caption_extension)):
-                            # check if the file is a valid image
+                            # check if the file is a valid image (any format supported by PIL)
                             img = Image.open(os.path.join(root, file))
                             img.verify()
+                            # no exception, it's a valid image
                             result.append(os.path.join(root, file))
                     except Exception:
                         continue
@@ -574,7 +574,7 @@ def __main__(
                 system_prompt,
                 vision_prompt,
                 examples,
-                api_args,
+                final_api_args,
             ),
         )
         worker.daemon = True
