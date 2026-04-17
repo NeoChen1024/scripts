@@ -5,7 +5,8 @@ import base64
 import os
 from collections import UserList
 from io import BytesIO
-from typing import List, Literal, Optional, overload
+from typing import Any, List, Literal, Optional, TypeVar, cast, overload
+from copy import deepcopy
 
 import click
 import PIL
@@ -17,6 +18,7 @@ from rich.console import Console
 from rich.pretty import pprint
 
 console = Console()
+T = TypeVar("T", bound=BaseModel)
 
 
 def _fallback_parameters(*args) -> any:  # type: ignore
@@ -46,6 +48,7 @@ class LLM_Config:
         max_tokens: Optional[int] = None,
         strip_thinking: Optional[bool] = False,
         thinking_delimiter: Optional[str] = "</thinking>",
+        **kwargs,
     ) -> None:
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -57,9 +60,14 @@ class LLM_Config:
         base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
         # Initialize OpenAI client
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.kwargs = kwargs
 
 
-def image_to_jpeg_base64(input_image: Image.Image, downscale: bool = True, size: tuple[int, int] = (2048, 2048)) -> str:
+def image_to_jpeg_base64(
+    input_image: Image.Image,
+    downscale: bool = True,
+    size: tuple[int, int] = (2048, 2048),
+) -> str:
     image = input_image.copy()
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -167,37 +175,48 @@ class LLM_History(UserList):
 @overload
 def llm_query(
     llm_config: LLM_Config,
-    format: Optional[Literal[None]] = None,
+    format: None = None,
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
     history: Optional[LLM_History] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    refusal_is_error: Optional[bool] = False,
+    refusal_is_error: bool = False,
 ) -> str: ...
 @overload
 def llm_query(
     llm_config: LLM_Config,
-    format: type[BaseModel],
+    format: type[T],
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
     history: Optional[LLM_History] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    refusal_is_error: Optional[bool] = False,
-) -> BaseModel: ...
+    refusal_is_error: Literal[True] = True,
+) -> T: ...
+@overload
+def llm_query(
+    llm_config: LLM_Config,
+    format: type[T],
+    text: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    history: Optional[LLM_History] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    refusal_is_error: Literal[False] = False,
+) -> T | str: ...
 
 
 def llm_query(
     llm_config: LLM_Config,
-    format: Optional[type[BaseModel]] = None,
+    format: Optional[type[T]] = None,
     text: Optional[str] = None,
     system_prompt: Optional[str] = None,
     history: Optional[LLM_History] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    refusal_is_error: Optional[bool] = False,
-) -> str | BaseModel:
+    refusal_is_error: bool = False,
+) -> str | T:
     client = llm_config.client
     model_name = llm_config.model_name
     temperature = _fallback_parameters(temperature, llm_config.temperature)
@@ -205,14 +224,14 @@ def llm_query(
 
     messages = []
     if history is not None:
-        messages = history.data
+        messages = deepcopy(history.data)
     # Add system prompt
     if system_prompt is not None:
         messages.append({"role": "system", "content": system_prompt})
     if text is not None:
         messages.append({"role": "user", "content": text})
 
-    kwargs = {}
+    kwargs = deepcopy(llm_config.kwargs)  # start with default kwargs from config
     if (max_tokens is not None) and (format is None):
         kwargs["max_tokens"] = max_tokens
     if temperature is not None:
@@ -245,7 +264,7 @@ def llm_query(
             console.log("Refusal occurred: " + refusal)
             console.log("History: ", history)
             return refusal
-        return message.parsed  # type: ignore
+        return cast(T, message.parsed)
 
 
 # Client implementation for reference

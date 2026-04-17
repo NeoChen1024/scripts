@@ -37,6 +37,10 @@ install_traceback(show_locals=True, console=console)
 print = console.print  # For convenience, use console.print instead of print
 
 example_list = List[Union[ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam]]
+message_list_type = List[
+    Union[ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam]
+]
+
 
 # fallback: default -> environment variable -> override
 def _fallback_environment(default: str, env_var: str, override: Optional[str] = None) -> str:
@@ -86,7 +90,7 @@ def load_examples_from_dir(
             print(f"Loading example: [yellow]{example_file}[/yellow]")
             image_path = os.path.join(examples_dir, example_file)
             image = Image.open(image_path)
-            image.load() # force loading image data, also verifies image integrity
+            image.load()  # force loading image data, also verifies image integrity
             # load corresponding caption
             # find a text file with the same name
             caption_file = os.path.splitext(example_file)[0] + ".txt"
@@ -127,7 +131,7 @@ def load_examples_from_dir(
 def get_caption_for_image(
     client: OpenAI,
     model_name: str,
-    system_prompt: str,
+    system_prompt: Union[str, None],
     vision_prompt: str,
     image_base64: str,
     examples: Optional[example_list] = None,
@@ -136,12 +140,14 @@ def get_caption_for_image(
     kwarg = {}
     if api_args is not None and isinstance(api_args, dict):
         kwarg.update(api_args)
-    messages: List[Union[ChatCompletionUserMessageParam, ChatCompletionSystemMessageParam, ChatCompletionAssistantMessageParam]] = [
-        ChatCompletionSystemMessageParam(
-            role="system",
-            content=system_prompt,
+    messages: message_list_type = []
+    if system_prompt is not None:
+        messages.append(
+            ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_prompt,
+            )
         )
-    ]
     if examples is not None:
         messages.extend(examples)
     messages.append(
@@ -215,21 +221,22 @@ def process_captions_from_queue(
             # log file info + padded caption response
             # one print call for better atomicity in multithreaded output
             if verbose:
-                print("[white on blue]>>[/white on blue] [yellow]"
-                        + image_path
-                        + "[/yellow] => [yellow]*."
-                        + caption_extension
-                        + "[/yellow], payload size: [bright_cyan]"
-                        + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
-                        + "[/bright_cyan]"
-                        + " (Input [bright_yellow]"
-                        + humanize.metric(token_cost[0], "T")
-                        + "[/bright_yellow], Output [bright_yellow]"
-                        + humanize.metric(token_cost[1], "T")
-                        + "[/bright_yellow])",
-                        # on separate line, print padded caption response
-                        Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4))
-                    )
+                print(
+                    "[white on blue]>>[/white on blue] [yellow]"
+                    + image_path
+                    + "[/yellow] => [yellow]*."
+                    + caption_extension
+                    + "[/yellow], payload size: [bright_cyan]"
+                    + humanize.naturalsize(len(image_base64) + total_examples_payload_size, binary=True)
+                    + "[/bright_cyan]"
+                    + " (Input [bright_yellow]"
+                    + humanize.metric(token_cost[0], "T")
+                    + "[/bright_yellow], Output [bright_yellow]"
+                    + humanize.metric(token_cost[1], "T")
+                    + "[/bright_yellow])",
+                    # on separate line, print padded caption response
+                    Padding("[green]" + caption_response + "[/green]", (0, 0, 0, 4)),
+                )
 
             caption_file.write(caption_response)
             caption_file.close()
@@ -306,7 +313,7 @@ default_vision_prompt = "Generate the caption for the following image."
     "-sp",
     "--system-prompt",
     default=None,
-    help="System prompt or path to the file for caption generation (default: built-in).",
+    help='System prompt or path to the file for caption generation (default: built-in, "NONE" for none).',
 )
 @click.option(
     "-vp",
@@ -433,11 +440,15 @@ def __main__(
     final_base_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
 
     if system_prompt is not None:
-        try:
-            with open(system_prompt, "r", encoding="utf-8") as f:
-                system_prompt = f.read()
-        except Exception as e:
-            pass
+        if system_prompt == "NONE":
+            system_prompt = None
+        else:
+            try:
+                with open(system_prompt, "r", encoding="utf-8") as f:
+                    system_prompt = f.read()
+            except Exception as e:
+                # if the file doesn't exist or can't be read, treat the input as a direct prompt string
+                pass
     else:
         system_prompt = default_system_prompt
     if vision_prompt is not None:
@@ -445,6 +456,7 @@ def __main__(
             with open(vision_prompt, "r", encoding="utf-8") as f:
                 vision_prompt = f.read()
         except Exception as e:
+            # if the file doesn't exist or can't be read, treat the input as a direct prompt string
             pass
     else:
         vision_prompt = default_vision_prompt
@@ -491,9 +503,9 @@ def __main__(
         )
         print("================================================")
         print("System prompt:\n")
-        print(Padding("[green]" + system_prompt + "[/green]", (0, 0, 0, 4)))
+        print(Padding("[green]" + str(system_prompt) + "[/green]", (0, 0, 0, 4)))
         print("\nVision prompt:\n")
-        print(Padding("[green]" + vision_prompt + "[/green]", (0, 0, 0, 4)))
+        print(Padding("[green]" + str(vision_prompt) + "[/green]", (0, 0, 0, 4)))
         print("================================================")
 
     # Initialize OpenAI client
@@ -604,7 +616,7 @@ def __main__(
         print("[bright_yellow]INFO:[/bright_yellow] All images queued, waiting for processing to finish...")
         image_queue.join()
         print("[bright_yellow]INFO:[/bright_yellow] All images processed.")
-        for _ in range(max_threads * 2): # send stop signals to workers
+        for _ in range(max_threads * 2):  # send stop signals to workers
             image_queue.put(None)
         for worker in workers:
             worker.join()
