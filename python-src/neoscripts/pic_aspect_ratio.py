@@ -10,10 +10,9 @@ import shutil
 from collections import Counter
 from multiprocessing import Pool
 
-from PIL import Image
 import click
 import tqdm
-
+from PIL import Image
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".avif"}
 

@@ -2,8 +2,8 @@
 # Simple script to scale LoRa alpha values
 
 import click
-from click import echo
 import safetensors
+from click import echo
 from safetensors.torch import save_file
 
 

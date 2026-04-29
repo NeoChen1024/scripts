@@ -20,9 +20,9 @@ import os
 import sys
 from typing import Dict, List, Tuple
 
+import click
 from rich.console import Console
 from rich.text import Text
-import click
 
 ANIME_DIRNAME = "Anime"
 WALLPAPER_DIRNAME = "Wallpaper"

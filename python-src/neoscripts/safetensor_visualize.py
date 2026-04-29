@@ -2,15 +2,15 @@
 
 # Simple script to visualize the value distribution of tensors in a safetensors file
 
-from math import floor, ceil
+from math import ceil, floor
 from typing import Optional, Tuple
 
 import click
+import matplotlib
 import safetensors
 import torch
-from tqdm import tqdm
 from torch import Tensor
-import matplotlib
+from tqdm import tqdm
 
 # Use a fast, non-interactive backend to speed up rendering and avoid GUI overhead
 matplotlib.use("pdf")

@@ -8,10 +8,10 @@ import os
 import sys
 from typing import Dict, List, Tuple
 
-from neoscripts.pic_dir_dedupe import _iter_category_files, _find_and_handle_dupes
-from rich.console import Console
-import rich.traceback
 import click
+import rich.traceback
+from neoscripts.pic_dir_dedupe import _find_and_handle_dupes, _iter_category_files
+from rich.console import Console
 
 ANIME_DIRNAME = "Anime"
 WALLPAPER_DIRNAME = "Wallpaper"
@@ -19,6 +19,7 @@ VWALLPAPER_DIRNAME = "VWallpaper"
 
 console = Console()
 rich.traceback.install(console=console)
+
 
 @click.command()
 @click.option(
@@ -76,6 +77,7 @@ def __main__(dry_run, inputdir, importdir, dupedir):
     console.print(f"  Files moved: {total_moved}")
     if dry_run:
         console.print("  (dry run: no files were actually moved)", style="yellow")
-        
+
+
 if __name__ == "__main__":
     __main__()

@@ -4,9 +4,9 @@
 import base64
 import os
 from collections import UserList
+from copy import deepcopy
 from io import BytesIO
 from typing import Any, List, Literal, Optional, TypeVar, cast, overload
-from copy import deepcopy
 
 import click
 import PIL
