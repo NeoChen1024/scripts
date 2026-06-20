@@ -2,15 +2,18 @@
 name = "neoscripts"
 version = "0.0.0a0"
 description = "Personal scripts for various tasks"
-authors = [{name = "Neo_Chen", email = "chenkolei@gmail.com"}]
+authors = [{ name = "Neo_Chen", email = "chenkolei@gmail.com" }]
 dynamic = ["dependencies"]
+
+[project.scripts]
+pic-mono-dither = "neoscripts.pic_mono_dither:cli"
 
 [build-system]
 # Minimum requirements for the build system to execute.
 requires = ["setuptools"]
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+dependencies = { file = ["requirements.txt"] }
 
 # only search for modules in the src directory
 [tool.setuptools.packages.find]
