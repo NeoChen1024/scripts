@@ -114,6 +114,7 @@ class LLM_Config:
         self.strip_thinking = strip_thinking
         self.thinking_delimiter = thinking_delimiter
         self.kwargs = kwargs
+        self.last_usage: Optional[dict] = None
 
         resolved_key = _fallback_environment("xxxx", "LLM_API_KEY", api_key)
         resolved_url = _fallback_environment("https://api.mistral.ai/v1", "LLM_BASE_URL", base_url)
@@ -384,10 +385,10 @@ def llm_query(
 
     # Build message list
     messages: list[ChatCompletionMessageParam] = []
-    if history is not None:
-        messages = deepcopy(history.data)
     if system_prompt is not None:
         messages.append(ChatCompletionSystemMessageParam(role="system", content=system_prompt))
+    if history is not None:
+        messages.extend(deepcopy(history.data))
     if text is not None:
         messages.append(ChatCompletionUserMessageParam(role="user", content=text))
 
@@ -408,6 +409,11 @@ def llm_query(
         response_text = chat_response.choices[0].message.content
         if llm_config.strip_thinking:
             response_text = strip_thinking(response_text, llm_config.thinking_delimiter)
+        if chat_response.usage is not None:
+            llm_config.last_usage = {
+                "prompt_tokens": chat_response.usage.prompt_tokens,
+                "completion_tokens": chat_response.usage.completion_tokens,
+            }
         return response_text
 
     # -- structured (parsed) completion -------------------------------------
@@ -419,6 +425,11 @@ def llm_query(
     )
     message = completion.choices[0].message
     refusal = message.refusal
+    if completion.usage is not None:
+        llm_config.last_usage = {
+            "prompt_tokens": completion.usage.prompt_tokens,
+            "completion_tokens": completion.usage.completion_tokens,
+        }
     if refusal is not None:
         if refusal_is_error:
             raise ValueError("Refusal occurred: " + refusal)
@@ -503,6 +514,12 @@ def __main__(
     # -- One-shot mode ------------------------------------------------------
     if not interactive and text is not None:
         response = llm_query(llm_config, text=text)
+        if llm_config.last_usage is not None:
+            usage = llm_config.last_usage
+            print(
+                f"[dim]LLM usage: input [cyan]{usage['prompt_tokens']:,}[/cyan] tokens, "
+                f"output [cyan]{usage['completion_tokens']:,}[/cyan] tokens[/dim]"
+            )
         print(response)
 
     # -- Interactive mode ----------------------------------------------------
@@ -553,6 +570,12 @@ def __main__(
                         llm_config,
                         text=user_input,
                         history=history,
+                    )
+                if llm_config.last_usage is not None:
+                    usage = llm_config.last_usage
+                    print(
+                        f"  [dim]LLM usage: input [cyan]{usage['prompt_tokens']:,}[/cyan] tokens, "
+                        f"output [cyan]{usage['completion_tokens']:,}[/cyan] tokens[/dim]"
                     )
                 history.add_user(user_input)  # add the user message after the response is received
                 history.add_assistant(response, strip_thinking_in_response=strip_thinking)

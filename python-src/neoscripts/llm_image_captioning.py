@@ -51,6 +51,54 @@ MessageListType = List[
 
 
 # ---------------------------------------------------------------------------
+# Image encoding profile
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ImageEncoding:
+    format: str  # "jpeg" | "png" | "webp"
+    mime_prefix: str
+    quality: int | None = None  # for lossy modes
+    lossless: bool = False  # for webp lossless
+    compress_level: int | None = None  # for png (0–9)
+    optimize: bool = False  # for png only (extra compression effort)
+
+    def save(self, image: Image.Image, output: BytesIO) -> None:
+        if self.format == "png":
+            image.save(
+                output,
+                format="PNG",
+                compress_level=self.compress_level if self.compress_level is not None else 6,
+                optimize=self.optimize,
+            )
+        elif self.format == "webp" and self.lossless:
+            image.save(output, format="WEBP", lossless=True)
+        else:
+            image.save(output, format=self.format.upper(), quality=self.quality)
+
+
+ENCODING_SPECS: dict[str, ImageEncoding] = {
+    "jpeg-q90": ImageEncoding(format="jpeg", mime_prefix="data:image/jpeg;base64,", quality=90),
+    "jpeg-q80": ImageEncoding(format="jpeg", mime_prefix="data:image/jpeg;base64,", quality=80),
+    "png": ImageEncoding(format="png", mime_prefix="data:image/png;base64,", compress_level=6),
+    "png-fast": ImageEncoding(format="png", mime_prefix="data:image/png;base64,", compress_level=0),
+    "webp-q90": ImageEncoding(format="webp", mime_prefix="data:image/webp;base64,", quality=90),
+    "webp-q80": ImageEncoding(format="webp", mime_prefix="data:image/webp;base64,", quality=80),
+    "webp-lossless": ImageEncoding(format="webp", mime_prefix="data:image/webp;base64,", lossless=True),
+}
+
+
+def parse_encoding(spec: str) -> ImageEncoding:
+    try:
+        return ENCODING_SPECS[spec]
+    except KeyError:
+        valid = ", ".join(ENCODING_SPECS)
+        panic(f"Unknown image encoding spec: {spec!r}. Valid values: {valid}")
+        raise SystemExit(1)  # unreachable, pacify type-checker
+
+
+# ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
 
@@ -63,7 +111,7 @@ class CaptionConfig:
     caption_extension: str
     total_examples_payload_size: int
     downscale: bool
-    lossless: bool
+    image_encoding: ImageEncoding
     resolution: Tuple[int, int]
     client: OpenAI
     model_name: str
@@ -91,32 +139,28 @@ def _fallback_environment(default: str, env_var: str, override: Optional[str] = 
 def get_image_base64(
     image_or_path: Union[str, Image.Image],
     downscale: bool = True,
-    lossless: bool = False,
+    encoding: ImageEncoding | None = None,
     size: Tuple[int, int] = (2048, 2048),
 ) -> str:
     """Convert an image (PIL.Image or file path) to a base64-encoded data URL."""
+    enc = encoding if encoding is not None else ENCODING_SPECS["jpeg-q90"]
     img = Image.open(image_or_path) if isinstance(image_or_path, str) else image_or_path
     img = img.convert("RGB")
     if downscale:
         img.thumbnail(size, Image.Resampling.LANCZOS)
 
     with BytesIO() as output:
-        if lossless:
-            img.save(output, format="PNG", optimize=True)
-            prefix = "data:image/png;base64,"
-        else:
-            img.save(output, format="JPEG", quality=90, optimize=True)
-            prefix = "data:image/jpeg;base64,"
-        base64_str = base64.b64encode(output.getvalue()).decode("utf-8")
+        enc.save(img, output)
+        base64_str = base64.b64encode(output.getvalue()).decode("ascii")
 
-    return f"{prefix}{base64_str}"
+    return f"{enc.mime_prefix}{base64_str}"
 
 
 def load_examples_from_dir(
     examples_dir: str,
     vision_prompt: str,
     downscale: bool = True,
-    lossless: bool = False,
+    encoding: ImageEncoding | None = None,
     size: Tuple[int, int] = (2048, 2048),
 ) -> Tuple[int, ExampleList]:
     """Load few-shot image+caption examples from a directory.
@@ -148,7 +192,7 @@ def load_examples_from_dir(
                 console.log(f"[red]Warning:[/red] Caption file {caption_filename} is empty for example {entry}. Skipping.")
                 continue
 
-            image_base64 = get_image_base64(image, downscale, lossless, size)
+            image_base64 = get_image_base64(image, downscale, encoding, size)
             total_payload_size += len(image_base64)
             examples.extend(
                 [
@@ -288,6 +332,7 @@ def resolve_api_args(api_args_input: Optional[str]) -> Dict[str, Any]:
 def print_verbose_config(
     base_url: str,
     model_name: str,
+    image_encoding_spec: str,
     api_args: Dict[str, Any],
     examples: ExampleList,
     total_examples_payload_size: int,
@@ -298,6 +343,7 @@ def print_verbose_config(
     console.print("=" * 48)
     console.print(f"Base URL:\t[cyan]{base_url}[/cyan]")
     console.print(f"Model:\t\t[cyan]{model_name}[/cyan]")
+    console.print(f"Encoding:\t[cyan]{image_encoding_spec}[/cyan]")
     if api_args:
         console.print(f"API arguments:\t[cyan]{api_args}[/cyan]")
     console.print(
@@ -323,53 +369,6 @@ def panic(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def process_single_image(
-    config: CaptionConfig,
-    image_path: str,
-    caption_output_path: Optional[str],
-    existing_caption: str,
-) -> None:
-    """Process a single image and write its caption."""
-    if caption_output_path is None:
-        caption_output_path = get_caption_output_path(image_path, config.caption_extension)
-        console.print(f"[white on blue]>>[/white on blue] [yellow]{image_path}[/yellow] => [yellow]*.{config.caption_extension}")
-    else:
-        console.print(f"[white on blue]>>[/white on blue] [yellow]{image_path}[/yellow] => [yellow]{caption_output_path}[/yellow]")
-
-    if existing_caption == "skip" and os.path.exists(caption_output_path):
-        console.print("[bright_yellow]INFO:[/bright_yellow] Caption file already exists, skipping...")
-        sys.exit(0)
-
-    image_base64 = get_image_base64(image_path, config.downscale, config.lossless, config.resolution)
-
-    if config.verbose:
-        payload_size = len(image_base64) + config.total_examples_payload_size
-        console.print(f"Payload size: [bright_cyan]" f"{humanize.naturalsize(payload_size, binary=True)}[/bright_cyan]")
-        console.print("Caption:")
-
-    token_count, caption_response = get_caption_for_image(
-        config.client,
-        config.model_name,
-        config.system_prompt,
-        config.vision_prompt,
-        image_base64,
-        config.examples,
-        config.api_args,
-    )
-
-    console.print(Padding(f"[green]{caption_response}[/green]", (0, 0, 0, 4)))
-
-    with open(caption_output_path, "w", encoding="utf-8") as f:
-        f.write(caption_response)
-
-    if config.verbose:
-        console.print(
-            f"Caption saved to [yellow]{caption_output_path}[/yellow] "
-            f"(Input [bright_yellow]{humanize.metric(token_count[0], 'T')}[/bright_yellow] "
-            f"Output [bright_yellow]{humanize.metric(token_count[1], 'T')}[/bright_yellow])\n\n"
-        )
-
-
 def process_captions_from_queue(config: CaptionConfig, queue: Queue) -> None:
     """Worker thread: pull image paths from *queue* and generate captions."""
     while True:
@@ -381,7 +380,7 @@ def process_captions_from_queue(config: CaptionConfig, queue: Queue) -> None:
         image_path: str = item
         try:
             caption_output_path = get_caption_output_path(image_path, config.caption_extension)
-            image_base64 = get_image_base64(image_path, config.downscale, config.lossless, config.resolution)
+            image_base64 = get_image_base64(image_path, config.downscale, config.image_encoding, config.resolution)
 
             token_cost, caption_response = get_caption_for_image(
                 config.client,
@@ -477,12 +476,6 @@ DEFAULT_VISION_PROMPT = "Generate the caption for the following image."
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
 )
 @click.option(
-    "-o",
-    "--caption-output",
-    default=None,
-    help="Path to save the caption output. Can't be used with multiple images.",
-)
-@click.option(
     "-sp",
     "--system-prompt",
     default=None,
@@ -543,10 +536,12 @@ DEFAULT_VISION_PROMPT = "Generate the caption for the following image."
     help="Disable image downscaling before uploading.",
 )
 @click.option(
-    "-ll",
-    "--lossless",
-    is_flag=True,
-    help="Use PNG compression for images (default: JPEG with quality=90).",
+    "-ie",
+    "--image-encoding",
+    default="jpeg-q90",
+    type=click.Choice(list(ENCODING_SPECS.keys())),
+    help="Image encoding profile (format-quality or format-mode).",
+    show_default=True,
 )
 @click.option(
     "-res",
@@ -566,7 +561,6 @@ DEFAULT_VISION_PROMPT = "Generate the caption for the following image."
 )
 def __main__(
     file_paths,
-    caption_output,
     system_prompt,
     vision_prompt,
     model,
@@ -577,7 +571,7 @@ def __main__(
     existing_caption,
     caption_extension,
     no_downscale,
-    lossless,
+    image_encoding,
     resolution,
     examples_dir,
     threads,
@@ -595,13 +589,6 @@ def __main__(
         console.log("[red]Error: No valid image files found.[/red]")
         sys.exit(1)
 
-    if len(file_paths) > 1 and caption_output is not None:
-        console.log("[red]Error: Can't use --caption_output with multiple input images[/red]")
-        sys.exit(1)
-
-    if caption_output is not None and not caption_output.endswith(f".{caption_extension}"):
-        console.print("[bright_yellow]INFO:[/bright_yellow] " "Caption extension will be ignored if --caption_output is provided")
-
     # ---- Resolve API settings ----------------------------------------------
     final_api_key = _fallback_environment("xxxx", "LLM_API_KEY", api_key)
     model_name = _fallback_environment("pixtral-large-latest", "LLM_MODEL_NAME", model)
@@ -613,6 +600,7 @@ def __main__(
 
     # ---- Resolve API extra arguments ---------------------------------------
     final_api_args = resolve_api_args(api_args)
+    parsed_encoding = parse_encoding(image_encoding)
 
     # ---- Load few-shot examples --------------------------------------------
     examples: List = []
@@ -624,7 +612,7 @@ def __main__(
             examples_dir,
             resolved_vision_prompt,
             not no_downscale,
-            lossless,
+            parsed_encoding,
             resolution,
         )
         if not examples:
@@ -635,6 +623,7 @@ def __main__(
         print_verbose_config(
             final_base_url,
             model_name,
+            image_encoding,
             final_api_args,
             examples,
             total_examples_payload_size,
@@ -649,7 +638,7 @@ def __main__(
         caption_extension=caption_extension,
         total_examples_payload_size=total_examples_payload_size,
         downscale=not no_downscale,
-        lossless=lossless,
+        image_encoding=parsed_encoding,
         resolution=resolution,
         client=client,
         model_name=model_name,
@@ -658,11 +647,6 @@ def __main__(
         examples=examples if examples else None,
         api_args=final_api_args if final_api_args else None,
     )
-
-    # ---- Single-image path -------------------------------------------------
-    if len(file_paths) == 1:
-        process_single_image(config, file_paths[0], caption_output, existing_caption)
-        sys.exit(0)
 
     # ---- Multi-image (threaded) path ---------------------------------------
     max_threads = min(threads, len(file_paths))
