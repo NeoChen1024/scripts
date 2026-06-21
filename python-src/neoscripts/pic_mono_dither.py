@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
-from typing import Callable
 
 import click
-import numba  # JIT-compiled error diffusion core
 import numpy as np
 from numba import jit
 from PIL import Image
@@ -395,10 +394,6 @@ class BrightnessCurve:
         self.points = [(0.0, 0.0), (1.0, 1.0)]
         self._need_rebuild = True
 
-    def invert(self) -> None:
-        self.points = [(y, x) for x, y in self.points]
-        self._need_rebuild = True
-
     def set_mode(self, mode: str) -> None:
         """Switch interpolation mode (``"smooth"`` | ``"linear"``)."""
         self.mode = mode
@@ -597,49 +592,53 @@ class PipelineWorker(QThread):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._pending: PipelineJob | None = None
-        self._lock = False
-        self._current_gen = -1
+        self._condition = threading.Condition()
+        self._stopping = False
 
     def submit(self, job: PipelineJob) -> None:
         """Replace any pending job and schedule the new one."""
-        self._pending = job
-        if not self._lock:
-            # Thread is idle — kick it off
-            QTimer.singleShot(0, self._process_next)
+        with self._condition:
+            self._pending = job
+            self._condition.notify()
 
-    def _process_next(self) -> None:
-        if self._pending is None:
-            return
-        job = self._pending
-        self._pending = None
-        self._lock = True
-        self._current_gen = job.generation
-        is_light = job.lightness is not None
-        try:
-            t0 = time.perf_counter()
+    def stop(self) -> None:
+        with self._condition:
+            self._stopping = True
+            self._condition.notify()
 
-            bits, L = run_pipeline(
-                job.pil_image,
-                job.w,
-                job.h,
-                job.curve_points,
-                job.curve_mode,
-                job.algo_name,
-                job.bayer_size,
-                job.strength,
-                lightness=job.lightness,
-            )
-            fresh_L = None if is_light else L.copy()
+    def run(self) -> None:
+        while True:
+            with self._condition:
+                while self._pending is None and not self._stopping:
+                    self._condition.wait()
+                if self._stopping:
+                    return
+                job = self._pending
+                self._pending = None
 
-            t = (time.perf_counter() - t0) * 1000
-            result = PipelineResult(bits, job.w, job.h, job.generation, t, fresh_lightness=fresh_L)
-            self.result_ready.emit(result)
-        except Exception:
-            pass
-        finally:
-            self._lock = False
-            if self._pending is not None:
-                QTimer.singleShot(0, self._process_next)
+            assert job is not None
+            is_light = job.lightness is not None
+            try:
+                t0 = time.perf_counter()
+
+                bits, L = run_pipeline(
+                    job.pil_image,
+                    job.w,
+                    job.h,
+                    job.curve_points,
+                    job.curve_mode,
+                    job.algo_name,
+                    job.bayer_size,
+                    job.strength,
+                    lightness=job.lightness,
+                )
+                fresh_L = None if is_light else L.copy()
+
+                t = (time.perf_counter() - t0) * 1000
+                result = PipelineResult(bits, job.w, job.h, job.generation, t, fresh_lightness=fresh_L)
+                self.result_ready.emit(result)
+            except Exception:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -686,11 +685,6 @@ class CurveEditor(QWidget):
 
     def reset_curve(self) -> None:
         self.curve.reset()
-        self.curveChanged.emit()
-        self.update()
-
-    def invert_curve(self) -> None:
-        self.curve.invert()
         self.curveChanged.emit()
         self.update()
 
@@ -943,6 +937,36 @@ class HistogramWidget(QWidget):
         painter.drawRect(0, 0, W - 1, H - 1)
 
 
+class BayerSizeSpinBox(QSpinBox):
+    """Spin box that only steps through valid Bayer matrix sizes."""
+
+    _VALID_VALUES = (2, 4, 8)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setRange(self._VALID_VALUES[0], self._VALID_VALUES[-1])
+        self.setSingleStep(1)
+
+    def stepBy(self, steps: int) -> None:  # noqa: N802
+        current = self.value()
+        values = self._VALID_VALUES
+        if steps > 0:
+            larger = [v for v in values if v > current]
+            if not larger:
+                self.setValue(values[-1])
+                return
+            idx = min(len(larger) - 1, steps - 1)
+            self.setValue(larger[idx])
+            return
+        if steps < 0:
+            smaller = [v for v in values if v < current]
+            if not smaller:
+                self.setValue(values[0])
+                return
+            idx = max(0, len(smaller) + steps)
+            self.setValue(smaller[idx])
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN WINDOW
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1005,6 +1029,8 @@ class MainWindow(QMainWindow):
         # ─── file row ──────────────────────────────────────────────────
         file_row = QHBoxLayout()
         self.open_btn = QPushButton("Open Image…")
+        self.help_btn = QPushButton("Keybindings")
+        self.help_btn.setToolTip("Show keyboard and mouse shortcuts (F1)")
         self.file_label = QLabel("No image loaded")
         self.file_label.setStyleSheet("color: #888;")
 
@@ -1014,6 +1040,7 @@ class MainWindow(QMainWindow):
         self._load_recent_menu()
 
         file_row.addWidget(self.open_btn)
+        file_row.addWidget(self.help_btn)
         file_row.addWidget(self.file_label, 1)
         vbox.addLayout(file_row)
 
@@ -1050,9 +1077,7 @@ class MainWindow(QMainWindow):
         settings_row.addWidget(self.algo_combo)
 
         self.bayer_label = QLabel("Bayer size:")
-        self.bayer_spin = QSpinBox()
-        self.bayer_spin.setRange(2, 8)
-        self.bayer_spin.setSingleStep(2)
+        self.bayer_spin = BayerSizeSpinBox()
         self.bayer_spin.setValue(4)
         self.bayer_spin.setToolTip("Bayer matrix size (power of two)")
         settings_row.addWidget(self.bayer_label)
@@ -1148,10 +1173,8 @@ class MainWindow(QMainWindow):
         self.curve_mode_btn.setChecked(False)
         self.curve_mode_btn.setToolTip("Toggle between smooth (PCHIP) and linear interpolation")
         self.reset_curve_btn = QPushButton("Reset")
-        self.invert_curve_btn = QPushButton("Invert")
         curve_toolbar.addWidget(self.curve_mode_btn)
         curve_toolbar.addWidget(self.reset_curve_btn)
-        curve_toolbar.addWidget(self.invert_curve_btn)
         curve_lay.addLayout(curve_toolbar)
 
         self.curve_editor = CurveEditor()
@@ -1182,6 +1205,7 @@ class MainWindow(QMainWindow):
 
     def _setup_connections(self) -> None:
         self.open_btn.clicked.connect(self._on_open)
+        self.help_btn.clicked.connect(self._show_keybindings_help)
         self.w_spin.valueChanged.connect(self._on_res_change)
         self.h_spin.valueChanged.connect(self._on_res_change)
         self.lock_btn.toggled.connect(self._on_lock_toggle)
@@ -1192,7 +1216,6 @@ class MainWindow(QMainWindow):
 
         self.curve_mode_btn.toggled.connect(self._on_curve_mode_toggle)
         self.reset_curve_btn.clicked.connect(self.curve_editor.reset_curve)
-        self.invert_curve_btn.clicked.connect(self.curve_editor.invert_curve)
 
         self.save_png_btn.clicked.connect(self._save_png)
         self.save_pbm_btn.clicked.connect(self._save_pbm)
@@ -1235,6 +1258,35 @@ class MainWindow(QMainWindow):
 
         copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         copy_shortcut.activated.connect(self._copy_to_clipboard)
+
+        help_shortcut = QShortcut(QKeySequence("F1"), self)
+        help_shortcut.activated.connect(self._show_keybindings_help)
+
+    def _show_keybindings_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "Keybindings",
+            "\n".join(
+                [
+                    "Keyboard shortcuts",
+                    "",
+                    "F1                Show this help",
+                    "Ctrl+O            Open image",
+                    "Ctrl+S            Save PNG",
+                    "Ctrl+Shift+S      Save PBM",
+                    "Ctrl+Shift+C      Copy result to clipboard",
+                    "Delete            Remove hovered/selected curve point",
+                    "Esc               Cancel active curve drag",
+                    "",
+                    "Mouse actions",
+                    "",
+                    "Mouse wheel       Zoom result preview",
+                    "Click curve       Add a control point",
+                    "Drag point        Move a control point",
+                    "Double-click      Remove a control point",
+                ]
+            ),
+        )
 
     def _on_delete_curve_point(self) -> None:
         """Delete the hovered or currently dragged curve point."""
@@ -1310,6 +1362,12 @@ class MainWindow(QMainWindow):
     # ═══════════════════════════════════════════════════════════════════
     #  Zoom
     # ═══════════════════════════════════════════════════════════════════
+
+    def _clear_lightness_cache(self) -> None:
+        self._lightness = None
+        self._light_w = 0
+        self._light_h = 0
+        self.histogram.set_lightness(None)
 
     def _on_zoom_toggle(self) -> None:
         """Toggle between fit-to-view and 1:1 display."""
@@ -1400,6 +1458,7 @@ class MainWindow(QMainWindow):
     def _schedule_full(self) -> None:
         """Re-run the complete pipeline (including downscale + OKLAB)."""
         self._full_recompute = True
+        self._clear_lightness_cache()
         self._dirty = True
         if not self._debounce.isActive():
             self._debounce.start()
@@ -1433,7 +1492,6 @@ class MainWindow(QMainWindow):
             generation=self._generation,
             lightness=None if need_full else self._lightness,
         )
-        self._full_recompute = False
         self._worker.submit(job)
 
     def _on_result_ready(self, result: PipelineResult) -> None:
@@ -1448,6 +1506,7 @@ class MainWindow(QMainWindow):
             self._lightness = result.fresh_lightness
             self._light_w = result.w
             self._light_h = result.h
+            self._full_recompute = False
 
         # Refresh histogram after every pass (full or light) so it
         # tracks the current curve's effect on the L* distribution.
@@ -1487,6 +1546,8 @@ class MainWindow(QMainWindow):
 
         self._current_image_path = path
         self._original_pil = img
+        self._clear_lightness_cache()
+        self._full_recompute = True
         self.file_label.setText(f"{os.path.basename(path)}  ({img.width}×{img.height})")
         self.file_label.setStyleSheet("color: #ccc;")
 
@@ -1567,7 +1628,7 @@ class MainWindow(QMainWindow):
 
     def _snap_bayer(self, val: int) -> None:
         valid = [2, 4, 8]
-        nearest = min(valid, key=lambda x: abs(x - val))
+        nearest = min(valid, key=lambda x: (abs(x - val), -x))
         if nearest != val:
             self.bayer_spin.blockSignals(True)
             self.bayer_spin.setValue(nearest)
@@ -1671,7 +1732,12 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Save PNG", default, "PNG Image (*.png)")
         if not path:
             return
-        Image.fromarray((self._result * 255).astype(np.uint8), mode="L").save(path)
+        try:
+            self._write_png(path, self._result)
+        except Exception as exc:
+            QMessageBox.critical(self, "Save PNG Failed", f"Could not save PNG to:\n{path}\n\n{exc}")
+            self.status_label.setText(f"Failed to save PNG: {path}")
+            return
         self.status_label.setText(f"Saved PNG: {path}")
 
     def _save_pbm(self) -> None:
@@ -1682,8 +1748,17 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Save PBM", default, "PBM Image (*.pbm)")
         if not path:
             return
-        self._write_pbm(path, self._result)
+        try:
+            self._write_pbm(path, self._result)
+        except Exception as exc:
+            QMessageBox.critical(self, "Save PBM Failed", f"Could not save PBM to:\n{path}\n\n{exc}")
+            self.status_label.setText(f"Failed to save PBM: {path}")
+            return
         self.status_label.setText(f"Saved PBM: {path}")
+
+    @staticmethod
+    def _write_png(path: str, bits: np.ndarray) -> None:
+        Image.fromarray((bits * 255).astype(np.uint8), mode="L").save(path)
 
     @staticmethod
     def _write_pbm(path: str, bits: np.ndarray) -> None:
@@ -1713,7 +1788,7 @@ class MainWindow(QMainWindow):
     # ── cleanup ───────────────────────────────────────────────────────────
 
     def closeEvent(self, a0) -> None:  # noqa: N802, N803
-        self._worker.quit()
+        self._worker.stop()
         self._worker.wait(2000)
         super().closeEvent(a0)
 
@@ -1729,7 +1804,10 @@ def _parse_curve_value(ctx: click.Context, param: click.Parameter, value: str | 
         return None
     # Accept space or comma separated values for convenience.
     raw = value.replace(",", " ")
-    nums = [float(x) for x in raw.split()]
+    try:
+        nums = [float(x) for x in raw.split()]
+    except ValueError as exc:
+        raise click.BadParameter("Curve values must all be numeric.") from exc
     if len(nums) % 2 != 0:
         raise click.BadParameter(
             "Curve must have an even number of values (pairs of input L*, output L*).",
@@ -1792,7 +1870,7 @@ def cli_process(
 
     # Ensure valid Bayer size
     if dither == "Bayer Ordered" and bayer_size not in (2, 4, 8):
-        bayer_size = min((2, 4, 8), key=lambda x: abs(x - bayer_size))
+        bayer_size = min((2, 4, 8), key=lambda x: (abs(x - bayer_size), -x))
 
     curve_mode = "linear" if linear else "smooth"
     points: list[tuple[float, float]]
@@ -1804,10 +1882,13 @@ def cli_process(
 
     bits, _ = run_pipeline(img, width, height, points, curve_mode, dither, bayer_size, strength)
 
-    if output.lower().endswith(".pbm"):
-        MainWindow._write_pbm(output, bits)
-    else:
-        Image.fromarray((bits * 255).astype(np.uint8), mode="L").save(output)
+    try:
+        if output.lower().endswith(".pbm"):
+            MainWindow._write_pbm(output, bits)
+        else:
+            MainWindow._write_png(output, bits)
+    except Exception as exc:
+        raise click.ClickException(f"Could not save '{output}': {exc}") from exc
 
     click.echo(f"Saved {output} ({width}×{height}, {dither})")
 
