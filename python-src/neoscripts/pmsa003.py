@@ -172,7 +172,9 @@ def format_measurement(measurement: Measurement, condition: str, moving: tuple[f
         pm10_aqi = particulate_aqi(moving_pm10, "pm10")
         aqi = f"AQI={max(pm25_aqi, pm10_aqi)} (PM2.5={pm25_aqi} PM10={pm10_aqi} hours={valid_hours})"
     else:
-        aqi = "AQI=N/A (insufficient hourly history)"
+        pm25_aqi = particulate_aqi(measurement.pm25, "pm25")
+        pm10_aqi = particulate_aqi(measurement.pm10, "pm10")
+        aqi = f"AQI={max(pm25_aqi, pm10_aqi)} (PM2.5={pm25_aqi} PM10={pm10_aqi}) (realtime)"
     return (
         f"{condition} ug/m3: PM1={pm1}, PM2.5={pm25}, PM10={pm10} | "
         f"count/0.1L >um(0.3={measurement.particles_03} 0.5={measurement.particles_05} "
