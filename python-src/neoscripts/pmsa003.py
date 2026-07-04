@@ -2,9 +2,12 @@
 
 """Read Plantower PMSA003 particulate measurements from a serial port."""
 
+import json
 import struct
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 
 import click
 import serial
@@ -22,6 +25,9 @@ PM10_RANGES = ((0, 30), (31, 75), (76, 190), (191, 354), (355, 424), (425, 504),
 
 @dataclass(frozen=True)
 class Measurement:
+    standard_pm1: int
+    standard_pm25: int
+    standard_pm10: int
     pm1: int
     pm25: int
     pm10: int
@@ -46,6 +52,9 @@ def parse_frame(frame: bytes) -> Measurement:
 
     values = struct.unpack(">13H", frame[4:30])
     return Measurement(
+        standard_pm1=values[0],
+        standard_pm25=values[1],
+        standard_pm10=values[2],
         pm1=values[3],
         pm25=values[4],
         pm10=values[5],
@@ -83,17 +92,17 @@ def read_frame(port: serial.Serial) -> Measurement:
             del buffer[0]
 
 
-def particulate_aqi(concentration: int, pollutant: str) -> int:
+def particulate_aqi(concentration: float, pollutant: str) -> int:
     """Calculate a Taiwan AQI particulate sub-index from one concentration."""
     if concentration < 0:
         raise ValueError("concentration cannot be negative")
 
     if pollutant == "pm25":
         # PM2.5 is defined to 0.1 ug/m3; sensor values are already integral.
-        value = float(Decimal(concentration).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+        value = float(Decimal(str(concentration)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
         ranges = PM25_RANGES
     elif pollutant == "pm10":
-        value = int(Decimal(concentration).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        value = int(Decimal(str(concentration)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         ranges = PM10_RANGES
     else:
         raise ValueError(f"unsupported pollutant: {pollutant}")
@@ -105,15 +114,71 @@ def particulate_aqi(concentration: int, pollutant: str) -> int:
     return 500
 
 
-def format_measurement(measurement: Measurement) -> str:
-    pm25_aqi = particulate_aqi(measurement.pm25, "pm25")
-    pm10_aqi = particulate_aqi(measurement.pm10, "pm10")
+class AQIHistory:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.hours = {}
+        if path.exists():
+            try:
+                loaded = json.loads(path.read_text())
+                self.hours = loaded if isinstance(loaded, dict) else {}
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    def add(self, measurement: Measurement, now: datetime | None = None) -> None:
+        now = now or datetime.now().astimezone()
+        key = now.replace(minute=0, second=0, microsecond=0).isoformat()
+        bucket = self.hours.setdefault(key, {"pm25": 0, "pm10": 0, "count": 0})
+        bucket["pm25"] += measurement.pm25
+        bucket["pm10"] += measurement.pm10
+        bucket["count"] += 1
+        cutoff = now - timedelta(hours=13)
+        self.hours = {key: value for key, value in self.hours.items() if datetime.fromisoformat(key) >= cutoff}
+
+    def moving(self, now: datetime | None = None) -> tuple[float, float, int] | None:
+        now = now or datetime.now().astimezone()
+        current = now.replace(minute=0, second=0, microsecond=0)
+
+        def hourly_averages(window: int) -> list[tuple[float, float]]:
+            cutoff = current - timedelta(hours=window - 1)
+            return [
+                (value["pm25"] / value["count"], value["pm10"] / value["count"])
+                for key, value in self.hours.items()
+                if datetime.fromisoformat(key) >= cutoff and value["count"]
+            ]
+
+        last_4, last_12 = hourly_averages(4), hourly_averages(12)
+        if len(last_4) < 2 or len(last_12) < 6:
+            return None
+        pm25 = 0.5 * sum(row[0] for row in last_12) / len(last_12) + 0.5 * sum(row[0] for row in last_4) / len(last_4)
+        pm10 = 0.5 * sum(row[1] for row in last_12) / len(last_12) + 0.5 * sum(row[1] for row in last_4) / len(last_4)
+        return pm25, pm10, len(last_12)
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text(json.dumps(self.hours, separators=(",", ":")))
+        temporary.replace(self.path)
+
+
+def format_measurement(measurement: Measurement, condition: str, moving: tuple[float, float, int] | None) -> str:
+    if condition == "standard":
+        pm1, pm25, pm10 = measurement.standard_pm1, measurement.standard_pm25, measurement.standard_pm10
+    else:
+        pm1, pm25, pm10 = measurement.pm1, measurement.pm25, measurement.pm10
+    if moving:
+        moving_pm25, moving_pm10, valid_hours = moving
+        pm25_aqi = particulate_aqi(moving_pm25, "pm25")
+        pm10_aqi = particulate_aqi(moving_pm10, "pm10")
+        aqi = f"AQI={max(pm25_aqi, pm10_aqi)} (PM2.5={pm25_aqi} PM10={pm10_aqi} hours={valid_hours})"
+    else:
+        aqi = "AQI=N/A (insufficient hourly history)"
     return (
-        f"ug/m3: PM1={measurement.pm1}, PM2.5={measurement.pm25}, PM10={measurement.pm10} | "
+        f"{condition} ug/m3: PM1={pm1}, PM2.5={pm25}, PM10={pm10} | "
         f"count/0.1L >um(0.3={measurement.particles_03} 0.5={measurement.particles_05} "
         f"1.0={measurement.particles_10} 2.5={measurement.particles_25} "
         f"5.0={measurement.particles_50} 10={measurement.particles_100}) | "
-        f"AQI={max(pm25_aqi, pm10_aqi)} (PM2.5={pm25_aqi} PM10={pm10_aqi})"
+        f"{aqi}"
     )
 
 
@@ -122,17 +187,41 @@ def format_measurement(measurement: Measurement) -> str:
 @click.option("--baudrate", "-b", default=9600, show_default=True, type=click.IntRange(min=1), help="Serial baud rate.")
 @click.option("--timeout", "-t", default=5.0, show_default=True, type=click.FloatRange(min=0.1), help="Read timeout in seconds.")
 @click.option("--count", "-n", default=0, show_default=True, type=click.IntRange(min=0), help="Number of readings; 0 runs forever.")
-def main(port: str, baudrate: int, timeout: float, count: int) -> None:
+@click.option(
+    "--condition",
+    type=click.Choice(["atmospheric", "standard"]),
+    default="atmospheric",
+    show_default=True,
+    help="Mass concentration fields to display; AQI always uses atmospheric values.",
+)
+@click.option(
+    "--history-file",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=Path("/tmp/pmsa003-aqi.json"),
+    show_default=True,
+    help="Persistent hourly AQI history file.",
+)
+def main(port: str, baudrate: int, timeout: float, count: int, condition: str, history_file: Path) -> None:
     emitted = 0
+    history = AQIHistory(history_file)
+    last_saved_minute = None
     try:
         with serial.Serial(port, baudrate=baudrate, timeout=timeout) as serial_port:
             while count == 0 or emitted < count:
-                click.echo(format_measurement(read_frame(serial_port)))
+                measurement = read_frame(serial_port)
+                history.add(measurement)
+                current_minute = datetime.now().astimezone().replace(second=0, microsecond=0)
+                if current_minute != last_saved_minute:
+                    history.save()
+                    last_saved_minute = current_minute
+                click.echo(format_measurement(measurement, condition, history.moving()))
                 emitted += 1
     except (SerialException, TimeoutError) as exc:
         raise click.ClickException(str(exc)) from exc
     except KeyboardInterrupt:
         pass
+    finally:
+        history.save()
 
 
 if __name__ == "__main__":
