@@ -16,3 +16,4 @@ soundfile
 matplotlib
 safetensors
 click
+pyserial
