@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
-# Simple script to visualize the value distribution of tensors in a safetensors file
-
 from math import ceil, floor
-from typing import Optional, Tuple
+from typing import Tuple
 
 import click
 import matplotlib
@@ -12,56 +10,55 @@ import torch
 from torch import Tensor
 from tqdm import tqdm
 
-# Use a fast, non-interactive backend to speed up rendering and avoid GUI overhead
 matplotlib.use("pdf")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MaxNLocator
 
+_SAMPLE_SIZE = 1_000_000
 
-def read_model(file, dtype=None) -> dict:
-    tensors = {}
-    with safetensors.safe_open(file, framework="pt", device="cpu") as f:
-        for key in f.keys():
-            if dtype:
-                tensors[key] = f.get_tensor(key).to(dtype)
-            else:
-                tensors[key] = f.get_tensor(key)
-    return tensors
-
-
-def bin_count(min_val: int, max_val: int) -> int:
-    bins = max_val - min_val
-    if min_val == max_val:
-        bins += 1
-    return bins
-
-
-safe_dtypes = [
+SAFE_DTYPES = {
     torch.float32,
     torch.float64,
     torch.float,
     torch.double,
-]
+}
 
 
-def tensor_value_histogram_autorange(tensor: Tensor, bins: int = 100) -> Tuple[Tensor, Tensor]:
-    return torch.histogram(tensor, bins=int(bins))
+def _sample_tensor(tensor: Tensor, max_samples: int | None) -> Tensor:
+    if max_samples is None:
+        return tensor
+    n = tensor.numel()
+    if n <= max_samples:
+        return tensor
+    idx = torch.randint(0, n, (max_samples,))
+    return tensor[idx]
 
 
-def tensor_exponent_histogram_autorange(
-    tensor: Tensor,
+def _bin_count(min_val: int, max_val: int) -> int:
+    span = max_val - min_val
+    if min_val == max_val:
+        span += 1
+    return span
+
+
+def tensor_value_histogram_autorange(
+    tensor: Tensor, bins: int = 100, max_samples: int | None = _SAMPLE_SIZE
 ) -> Tuple[Tensor, Tensor]:
-    # Disable autograd for math ops
     with torch.inference_mode():
-        _, exponent = torch.frexp(tensor)  # mantissa not used
+        sampled = _sample_tensor(tensor, max_samples)
+        return torch.histogram(sampled, bins=int(bins))
+
+
+def tensor_exponent_histogram_autorange(tensor: Tensor, max_samples: int | None = _SAMPLE_SIZE) -> Tuple[Tensor, Tensor]:
+    with torch.inference_mode():
+        sampled = _sample_tensor(tensor, max_samples)
+        _, exponent = torch.frexp(sampled)
         min_val = floor(exponent.min().item())
         max_val = ceil(exponent.max().item())
-        bins = bin_count(min_val, max_val)
-
-        # convert to float32 for histogram
+        exp_bins = _bin_count(min_val, max_val)
         exponent = exponent.to(torch.float32)
-        return torch.histogram(exponent, bins=bins, range=(min_val, max_val))
+        return torch.histogram(exponent, bins=exp_bins, range=(min_val, max_val))
 
 
 @click.command()
@@ -91,14 +88,23 @@ def tensor_exponent_histogram_autorange(
     show_default=True,
     help="Use log scale for y-axis in histograms.",
 )
+@click.option(
+    "--sample/--no-sample",
+    default=True,
+    show_default=True,
+    help="Use random sampling for large tensors to speed up histogram computation.",
+)
 def __main__(
     input_file,
     output,
     bins,
     log_scale,
+    sample,
 ):
     if not output.endswith(".pdf"):
         output += ".pdf"
+
+    max_samples = _SAMPLE_SIZE if sample else None
 
     with PdfPages(output) as pdf:
         with safetensors.safe_open(input_file, framework="pt", device="cpu") as f:
@@ -108,25 +114,20 @@ def __main__(
             t = tqdm(keys, desc="Processing tensors", unit="tensor")
             for key in t:
                 t.display(f"{key}", pos=1)
-                # Get tensor lazily to keep memory low
                 tensor = f.get_tensor(key)
                 tensor = tensor.flatten()
-                # set all NaN to zero to avoid issues in histogram
-                tensor = torch.nan_to_num(tensor, nan=0.0)
                 if tensor.numel() == 0:
                     t.write(f"Skipping empty tensor {key}")
                     continue
-                if tensor.dtype not in safe_dtypes:
+                if tensor.dtype not in SAFE_DTYPES:
                     tensor = tensor.to(torch.float32)
-                # Always plot both exponent and value histograms (2 subplots)
-                num_subplots = 2
+                tensor = torch.nan_to_num(tensor, nan=0.0)
 
                 plt.figure()
 
                 with torch.inference_mode():
-                    # Exponent histogram
-                    plt.subplot(num_subplots, 1, 1)
-                    exponent_histogram, exponent_bins = tensor_exponent_histogram_autorange(tensor)
+                    exponent_histogram, exponent_bins = tensor_exponent_histogram_autorange(tensor, max_samples=max_samples)
+                    plt.subplot(2, 1, 1)
                     plt.bar(exponent_bins[:-1], exponent_histogram, color="green")
                     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
                     plt.xlabel("Exponent")
@@ -134,9 +135,8 @@ def __main__(
                     plt.ylabel("Density")
                     plt.title(f"Tensor {key} Exponent Histogram")
 
-                    # Value histogram
-                    plt.subplot(num_subplots, 1, 2)
-                    value_histogram, value_bins = tensor_value_histogram_autorange(tensor, bins=bins)
+                    value_histogram, value_bins = tensor_value_histogram_autorange(tensor, bins=bins, max_samples=max_samples)
+                    plt.subplot(2, 1, 2)
                     plt.bar(value_bins[:-1], value_histogram, color="blue")
                     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=False))
                     plt.xlabel("Value")
