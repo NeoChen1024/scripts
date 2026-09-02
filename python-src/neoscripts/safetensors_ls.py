@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # view safetensors metadata without safetensors library
 
-import argparse
 import json
 import math
 import struct

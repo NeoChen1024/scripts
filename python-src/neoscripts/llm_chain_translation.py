@@ -5,105 +5,17 @@
 # find . -type f \( -iname "*.txt" \) -print0 | \
 #     parallel --bar -0 -j 16 ~/vcs/scripts/llm-chain-translation.py -i '{}' -o 'out/{/}' -ex skip
 
-import argparse
 import math
 import os
 import sys
 
+import click
 import humanize
 from openai import OpenAI
 from rich import print
 from rich.console import Console
 from rich.padding import Padding
 from rich.progress import Progress
-
-
-def none_or_str(value):
-    if value is None:
-        return "None"
-    return str(value)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Translate text using OpenAI-compatible API")
-    parser.add_argument("-i", "--input_file", required=True, help="Path to the input text file")
-    parser.add_argument("-o", "--output_file", required=True, help="Path to save the translated output")
-    parser.add_argument(
-        "-l",
-        "--language",
-        required=False,
-        default="English",
-        help="Language to translate the text to, that the LLM can understand, will replace all %LANG% in the system prompt (default: English)",
-    )
-    parser.add_argument(
-        "-n",
-        "--lines",
-        type=int,
-        default=20,
-        help="Number of lines to process in one round (default: 20)",
-    )
-    parser.add_argument(
-        "-p",
-        "--prompt_file",
-        help="System prompt file for translation (default: built-in)",
-    )
-    parser.add_argument(
-        "-ap",
-        "--additional_prompt",
-        help='Additional prompt for translation, replaces "%%" in the prompt, " %%" will be removed if it\'s not set (default: None)',
-    )
-    parser.add_argument(
-        "-m",
-        "--model",
-        help="Model to use for translation (default: mistral-large-latest if LLM_MODEL_NAME environment variable is not set)",
-    )
-    parser.add_argument(
-        "-k",
-        "--api_key",
-        help="Override LLM API key (default: content of LLM_API_KEY environment variable)",
-    )
-    parser.add_argument("-u", "--base_url", help="Override LLM base URL (default: Mistral's)")
-    parser.add_argument(
-        "-t",
-        "--temperature",
-        type=float,
-        default=0.7,
-        help="Temperature for translation (default: 0.7)",
-    )
-    parser.add_argument(
-        "-tp",
-        "--top_p",
-        type=float,
-        default=0.9,
-        help="Top P for translation (default: 0.9)",
-    )
-    parser.add_argument(
-        "-mt",
-        "--max_tokens",
-        type=int,
-        default=500,
-        help="Maximum number of tokens in the translation (default: 500)",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        default=False,
-        action="store_true",
-        help="Verbose output (default: False)",
-    )
-    parser.add_argument(
-        "-ex",
-        "--existing_translation",
-        default="overwrite",
-        choices=["overwrite", "skip"],
-        help='"overwrite" or "skip" existing translation file (default: overwrite)',
-    )
-    return parser.parse_args()
-
-
-def panic(e):
-    print("[red]Error:\t" + str(e) + "[/red]")
-    sys.exit(1)
 
 
 def get_translation_from_text(
@@ -138,50 +50,131 @@ def get_translation_from_text(
     return chat_response.choices[0].message.content
 
 
-def __main__():
+@click.command()
+@click.option(
+    "-i",
+    "--input-file",
+    "--input_file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to the input text file",
+)
+@click.option(
+    "-o",
+    "--output-file",
+    "--output_file",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Path to save the translated output",
+)
+@click.option(
+    "-l",
+    "--language",
+    default="English",
+    show_default=True,
+    help="Language to translate the text to; replaces all %LANG% in the system prompt",
+)
+@click.option(
+    "-n",
+    "--lines",
+    type=click.IntRange(min=1),
+    default=20,
+    show_default=True,
+    help="Number of lines to process in one round",
+)
+@click.option(
+    "-p",
+    "--prompt-file",
+    "--prompt_file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="System prompt file for translation (default: built-in)",
+)
+@click.option(
+    "-ap",
+    "--additional-prompt",
+    "--additional_prompt",
+    help='Additional prompt for translation, replaces "%%" in the prompt, " %%" will be removed if it\'s not set (default: None)',
+)
+@click.option(
+    "-m",
+    "--model",
+    help="Model to use for translation (default: mistral-large-latest if LLM_MODEL_NAME environment variable is not set)",
+)
+@click.option(
+    "-k",
+    "--api-key",
+    "--api_key",
+    help="Override LLM API key (default: content of LLM_API_KEY environment variable)",
+)
+@click.option("-u", "--base-url", "--base_url", help="Override LLM base URL (default: Mistral's)")
+@click.option("-t", "--temperature", type=float, default=0.7, show_default=True, help="Temperature for translation")
+@click.option("-tp", "--top-p", "--top_p", type=float, default=0.9, show_default=True, help="Top P for translation")
+@click.option(
+    "-mt",
+    "--max-tokens",
+    "--max_tokens",
+    type=click.IntRange(min=1),
+    default=500,
+    show_default=True,
+    help="Maximum number of tokens in the translation",
+)
+@click.option("-v", "--verbose", is_flag=True, help="Verbose output")
+@click.option(
+    "-ex",
+    "--existing-translation",
+    "--existing_translation",
+    default="overwrite",
+    show_default=True,
+    type=click.Choice(["overwrite", "skip"]),
+    help="How to handle an existing translation file",
+)
+def __main__(
+    input_file,
+    output_file,
+    language,
+    lines,
+    prompt_file,
+    additional_prompt,
+    model,
+    api_key,
+    base_url,
+    temperature,
+    top_p,
+    max_tokens,
+    verbose,
+    existing_translation,
+):
+    """Translate text using an OpenAI-compatible API."""
+
     console = Console()
-    args = parse_args()
-    input_file = args.input_file
-    output_file = args.output_file
-    language = args.language
-    lines_per_round = args.lines
-    prompt_file = args.prompt_file
-    additional_prompt = args.additional_prompt
-    verbose = args.verbose
-    temperature = args.temperature
-    top_p = args.top_p
-    max_tokens = args.max_tokens
+    lines_per_round = lines
 
-    # Argument validation
-    if not os.path.exists(input_file):
-        panic("Input file does not exist: " + input_file)
-
-    if os.path.exists(output_file) and args.existing_translation == "skip":
+    if os.path.exists(output_file) and existing_translation == "skip":
         console.log("Translation file already exists, skipping...")
-        sys.exit(0)
+        return
 
     # Check if the API key is set
-    api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
+    resolved_api_key = "xxxx"  # placeholder, it's fine for it to be any string for local LLM
     if (key := os.environ.get("LLM_API_KEY")) is not None:
-        api_key = key
+        resolved_api_key = key
     # Override if provided by command line argument
-    if args.api_key is not None:
-        api_key = args.api_key
+    if api_key is not None:
+        resolved_api_key = api_key
 
     # Get model name from environment variable if it exists
     model_name = "mistral-large-latest"  # default model from Mistral
     if (name := os.environ.get("LLM_MODEL_NAME")) is not None:
         model_name = name
     # Override if provided by command line argument
-    if args.model is not None:
-        model_name = args.model
+    if model is not None:
+        model_name = model
 
-    base_url = "https://api.mistral.ai/v1"
+    resolved_base_url = "https://api.mistral.ai/v1"
     if (url := os.environ.get("LLM_BASE_URL")) is not None:
-        base_url = url
+        resolved_base_url = url
     # Override if provided by command line argument
-    if args.base_url is not None:
-        base_url = args.base_url
+    if base_url is not None:
+        resolved_base_url = base_url
 
     system_prompt = (
         "You are a linguistic expert capable of identifying and translating text from "
@@ -215,7 +208,7 @@ def __main__():
     if verbose:
         print("================================================")
         print("Model:\t\t[cyan]" + model_name + "[/cyan]")
-        print("Base URL:\t[cyan]" + base_url + "[/cyan]")
+        print("Base URL:\t[cyan]" + resolved_base_url + "[/cyan]")
         print("Temperature:\t[cyan]" + str(temperature) + "[/cyan]")
         print("Top P:\t\t[cyan]" + str(top_p) + "[/cyan]")
         print("Max tokens:\t[cyan]" + str(max_tokens) + "[/cyan]")
@@ -229,7 +222,7 @@ def __main__():
         print("================================================")
 
     # Initialize OpenAI client
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=resolved_api_key, base_url=resolved_base_url)
 
     print("\n[white on blue]>>[/white on blue] [yellow]" + input_file + "[/yellow] => [yellow]" + output_file + "[/yellow]")
 
@@ -309,4 +302,5 @@ if __name__ == "__main__":
     try:
         __main__()
     except Exception as e:
-        panic(str(e))
+        print("[red]Error:\t" + str(e) + "[/red]")
+        sys.exit(1)

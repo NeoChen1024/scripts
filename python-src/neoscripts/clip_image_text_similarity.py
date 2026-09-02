@@ -2,77 +2,66 @@
 
 # CLIP Image-Text Similarity
 
-import argparse
-import os
-from pprint import pp
-
-import PIL
+import click
 import torch
 from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 
-def argparser():
-    parser = argparse.ArgumentParser(description="CLIP Image-Text Similarity")
-    parser.add_argument(
-        "--model",
-        "-m",
-        type=str,
-        default="apple/DFN5B-CLIP-ViT-H-14-378",
-        help="Model ID",
-    )
-    parser.add_argument(
-        "--images",
-        "-i",
-        type=str,
-        required=True,
-        nargs="+",
-        default=[],
-        help="Path to image file",
-    )
-    parser.add_argument(
-        "--text",
-        "-t",
-        type=str,
-        required=True,
-        help="Text caption to compare",
-    )
-    args = parser.parse_args()
-    return args
+@click.command()
+@click.option(
+    "--model",
+    "-m",
+    default="apple/DFN5B-CLIP-ViT-H-14-378",
+    show_default=True,
+    help="Model ID",
+)
+@click.option(
+    "--images",
+    "-i",
+    required=True,
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to an image file. Repeat for multiple images.",
+)
+@click.option(
+    "--text",
+    "-t",
+    required=True,
+    help="Text caption to compare",
+)
+def __main__(model, images, text):
+    """Calculate CLIP image-text similarity."""
 
-
-def __main__():
-    args = argparser()
-    print(args)
     # Use CLIP-G
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    processor = CLIPProcessor.from_pretrained(args.model, device_map=device)
-    model = CLIPModel.from_pretrained(args.model, device_map=device)
-    print("Model loaded: ", args.model)
+    processor = CLIPProcessor.from_pretrained(model, device_map=device)
+    clip_model = CLIPModel.from_pretrained(model, device_map=device)
+    print("Model loaded: ", model)
     # Load images
-    images = []
-    for img in args.images:
+    loaded_images = []
+    for img in images:
         with Image.open(img) as i:
             i = i.convert("RGB")
-            images.append(i)
+            loaded_images.append(i)
 
-    print(f"{len(images)} images loaded")
-    print("Compare with text: ", args.text)
+    print(f"{len(loaded_images)} images loaded")
+    print("Compare with text: ", text)
 
     # Preprocess images and texts
-    inputs = processor(text=args.text, images=images, return_tensors="pt", truncation=True).to(device)
+    inputs = processor(text=text, images=loaded_images, return_tensors="pt", truncation=True).to(device)
     print("Preprocessed")
 
     # Calculate similarity
     with torch.no_grad():
-        output = model(**inputs)
+        output = clip_model(**inputs)
     logits = output.logits_per_image.cpu().numpy()
     # Apply softmax
     similaritys = torch.nn.functional.softmax(torch.tensor(logits), dim=0)
     # Print similarity
     for i, val in enumerate(similaritys):
         val = val.item()
-        print(f"{args.images[i]} - Text similarity: {val}")
+        print(f"{images[i]} - Text similarity: {val}")
     return
 
 
