@@ -57,6 +57,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -70,7 +71,6 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStatusBar,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -972,6 +972,140 @@ class BayerSizeSpinBox(QSpinBox):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+class CropPreview(QLabel):
+    """Selection coordinates are always in the unscaled dither pixel grid."""
+
+    selectionChanged = pyqtSignal(int, int, int, int)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.canvas_size = (1, 1)
+        self.selection = (0, 0, 1, 1)
+        self.crop_enabled = False
+        self.size_locked = False
+        self._drag = None
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self.crop_enabled:
+            return
+        cw, ch = self.canvas_size
+        x, y, w, h = self.selection
+        sx, sy = self.width() / cw, self.height() / ch
+        rect = QRectF(x * sx, y * sy, w * sx, h * sy)
+        p = QPainter(self)
+        shade = QColor(146, 146, 146, 119)  # Blend black to #444 and white to #ccc.
+        for r in (
+            QRectF(0, 0, self.width(), rect.top()),
+            QRectF(0, rect.bottom(), self.width(), self.height() - rect.bottom()),
+            QRectF(0, rect.top(), rect.left(), rect.height()),
+            QRectF(rect.right(), rect.top(), self.width() - rect.right(), rect.height()),
+        ):
+            p.fillRect(r, shade)
+        p.setPen(QPen(QColor(0, 200, 255), 2))
+        p.drawRect(rect.adjusted(1, 1, -1, -1))
+        if not self.size_locked:
+            p.setBrush(QColor(255, 255, 255))
+            for handle in self._corner_handles().values():
+                p.drawRect(handle)
+
+    def _corner_handles(self) -> dict[str, QRectF]:
+        """Fixed logical-pixel handles stay usable at any zoom or pixel aspect."""
+        cw, ch = self.canvas_size
+        x, y, w, h = self.selection
+        sx, sy = self.width() / cw, self.height() / ch
+        size = min(10.0, self.width(), self.height())
+        handles = {}
+        for name, cx, cy in (("lt", x, y), ("rt", x + w, y), ("lb", x, y + h), ("rb", x + w, y + h)):
+            left = max(0, min(self.width() - size, cx * sx - size / 2))
+            top = max(0, min(self.height() - size, cy * sy - size / 2))
+            handles[name] = QRectF(left, top, size, size)
+        return handles
+
+    def _hit_mode(self, event) -> str:
+        if not self.crop_enabled:
+            return ""
+        pos = event.position()
+        if not self.size_locked:
+            # Prefer the nearest corner when handles overlap on a tiny selection.
+            handles = sorted(self._corner_handles().items(), key=lambda item: (item[1].center() - pos).manhattanLength())
+            for name, rect in handles:
+                if rect.adjusted(-3, -3, 3, 3).contains(pos):
+                    return name
+        px, py = self._pixel(event)
+        x, y, w, h = self.selection
+        return "move" if self.size_locked or x <= px < x + w and y <= py < y + h else "new"
+
+    def _update_cursor(self, mode: str) -> None:
+        cursor = {
+            "lt": Qt.CursorShape.SizeFDiagCursor,
+            "rb": Qt.CursorShape.SizeFDiagCursor,
+            "rt": Qt.CursorShape.SizeBDiagCursor,
+            "lb": Qt.CursorShape.SizeBDiagCursor,
+            "move": Qt.CursorShape.SizeAllCursor,
+            "new": Qt.CursorShape.CrossCursor,
+        }.get(mode, Qt.CursorShape.ArrowCursor)
+        self.setCursor(cursor)
+
+    def _pixel(self, event):
+        cw, ch = self.canvas_size
+        return (
+            min(cw - 1, max(0, int(event.position().x() * cw / self.width()))),
+            min(ch - 1, max(0, int(event.position().y() * ch / self.height()))),
+        )
+
+    def mousePressEvent(self, event) -> None:
+        if not self.crop_enabled or event.button() != Qt.MouseButton.LeftButton:
+            return super().mousePressEvent(event)
+        self.setFocus()
+        px, py = self._pixel(event)
+        mode = self._hit_mode(event)
+        self._update_cursor(mode)
+        self._drag = (px, py, self.selection, mode)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag is None:
+            self._update_cursor(self._hit_mode(event))
+            return
+        px, py = self._pixel(event)
+        ax, ay, (x, y, w, h), mode = self._drag
+        cw, ch = self.canvas_size
+        dx, dy = px - ax, py - ay
+        if mode == "move":
+            x, y = min(cw - w, max(0, x + dx)), min(ch - h, max(0, y + dy))
+        elif mode == "new":
+            x, y, w, h = min(ax, px), min(ay, py), abs(px - ax) + 1, abs(py - ay) + 1
+        else:
+            right, bottom = x + w, y + h
+            if "l" in mode:
+                x = max(0, min(right - 1, x + dx))
+            if "r" in mode:
+                right = min(cw, max(x + 1, right + dx))
+            if "t" in mode:
+                y = max(0, min(bottom - 1, y + dy))
+            if "b" in mode:
+                bottom = min(ch, max(y + 1, bottom + dy))
+            w, h = right - x, bottom - y
+        self.selectionChanged.emit(x, y, w, h)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag = None
+        self._update_cursor(self._hit_mode(event))
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        delta = {Qt.Key.Key_Left: (-1, 0), Qt.Key.Key_Right: (1, 0), Qt.Key.Key_Up: (0, -1), Qt.Key.Key_Down: (0, 1)}
+        if self.crop_enabled and event.key() in delta:
+            x, y, w, h = self.selection
+            cw, ch = self.canvas_size
+            dx, dy = delta[event.key()]
+            self.selectionChanged.emit(min(cw - w, max(0, x + dx)), min(ch - h, max(0, y + dy)), w, h)
+        else:
+            super().keyPressEvent(event)
+
+
 class MainWindow(QMainWindow):
     """Application entry-point."""
 
@@ -985,6 +1119,7 @@ class MainWindow(QMainWindow):
         self._result: np.ndarray | None = None
         self._generation: int = 0
         self._current_image_path: str = ""
+        self._canvas_anchor = "width"
 
         # cached OKLAB L* at current target resolution
         self._lightness: np.ndarray | None = None
@@ -1049,22 +1184,17 @@ class MainWindow(QMainWindow):
         settings_row.setSpacing(12)
 
         res_group = QHBoxLayout()
-        res_group.addWidget(QLabel("Resolution:"))
+        res_group.addWidget(QLabel("Canvas Size:"))
         self.w_spin = QSpinBox()
         self.w_spin.setRange(1, 99999)
         self.w_spin.setValue(384)
         self.h_spin = QSpinBox()
         self.h_spin.setRange(1, 99999)
         self.h_spin.setValue(240)
-        self.lock_btn = QToolButton()
-        self.lock_btn.setCheckable(True)
-        self.lock_btn.setChecked(True)
-        self.lock_btn.setText("🔗")
-        self.lock_btn.setToolTip("Lock aspect ratio to original image")
         res_group.addWidget(self.w_spin)
         res_group.addWidget(QLabel("×"))
         res_group.addWidget(self.h_spin)
-        res_group.addWidget(self.lock_btn)
+        res_group.addWidget(QLabel("(aspect locked)"))
         settings_row.addLayout(res_group)
 
         settings_row.addSpacing(24)
@@ -1093,6 +1223,20 @@ class MainWindow(QMainWindow):
         settings_row.addWidget(self.strength_spin)
         settings_row.addStretch(1)
         vbox.addLayout(settings_row)
+
+        par_row = QHBoxLayout()
+        par_row.addWidget(QLabel("Pixel aspect (W:H):"))
+        self.par_w = QSpinBox()
+        self.par_h = QSpinBox()
+        for spin in (self.par_w, self.par_h):
+            spin.setRange(1, 1000)
+            spin.setValue(1)
+            spin.setToolTip("Target pixel width:height; affects canvas sampling and display, not the source preview")
+        par_row.addWidget(self.par_w)
+        par_row.addWidget(QLabel(":"))
+        par_row.addWidget(self.par_h)
+        par_row.addStretch()
+        vbox.addLayout(par_row)
 
         # ─── preview area ──────────────────────────────────────────────
         preview_row = QHBoxLayout()
@@ -1135,15 +1279,44 @@ class MainWindow(QMainWindow):
         result_header.addWidget(self.copy_btn)
         result_layout.addLayout(result_header, 0)
 
+        display_row = QHBoxLayout()
+        self.aspect_preview = QComboBox()
+        self.aspect_preview.addItems(["Display aspect", "Square pixels"])
+        display_row.addWidget(self.aspect_preview)
+        self.crop_enabled = QCheckBox("Crop")
+        display_row.addWidget(self.crop_enabled)
+        display_row.addStretch()
+        result_layout.addLayout(display_row)
+
+        self.crop_controls = QWidget()
+        crop_row = QHBoxLayout(self.crop_controls)
+        crop_row.setContentsMargins(0, 0, 0, 0)
+        self.crop_spins = []
+        for name in ("X", "Y", "W", "H"):
+            crop_row.addWidget(QLabel(name))
+            spin = QSpinBox()
+            spin.setRange(0 if name in ("X", "Y") else 1, 99999)
+            spin.setToolTip("Output pixel coordinates; values are constrained to the canvas")
+            crop_row.addWidget(spin)
+            self.crop_spins.append(spin)
+        self.crop_lock = QCheckBox("Lock size")
+        self.crop_lock.setChecked(False)
+        crop_row.addWidget(self.crop_lock)
+        self.crop_full = QPushButton("Full image")
+        crop_row.addWidget(self.crop_full)
+        self.crop_controls.hide()
+        result_layout.addWidget(self.crop_controls)
+
         # scrollable result preview
         self.result_scroll = QScrollArea()
         self.result_scroll.setWidgetResizable(False)
         self.result_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_preview = QLabel()
+        self.result_preview = CropPreview()
         self.result_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.result_preview.setStyleSheet("background: transparent;")
         self.result_scroll.setWidget(self.result_preview)
         self.result_scroll.installEventFilter(self)
+        self.result_scroll.viewport().installEventFilter(self)
         self.result_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.result_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         result_layout.addWidget(self.result_scroll, 1)
@@ -1208,7 +1381,6 @@ class MainWindow(QMainWindow):
         self.help_btn.clicked.connect(self._show_keybindings_help)
         self.w_spin.valueChanged.connect(self._on_res_change)
         self.h_spin.valueChanged.connect(self._on_res_change)
-        self.lock_btn.toggled.connect(self._on_lock_toggle)
         self.algo_combo.currentTextChanged.connect(self._on_algo_change)
         self.bayer_spin.valueChanged.connect(self._snap_bayer)
         self.strength_spin.valueChanged.connect(self._schedule_light)
@@ -1223,6 +1395,15 @@ class MainWindow(QMainWindow):
         self.zoom_btn.clicked.connect(self._on_zoom_toggle)
         self.compare_btn.toggled.connect(self._on_compare_toggle)
         self.copy_btn.clicked.connect(self._copy_to_clipboard)
+        self.par_w.valueChanged.connect(self._on_par_change)
+        self.par_h.valueChanged.connect(self._on_par_change)
+        self.aspect_preview.currentIndexChanged.connect(self._refresh_preview)
+        self.crop_enabled.toggled.connect(self._crop_changed)
+        self.crop_lock.toggled.connect(self._crop_changed)
+        for spin in self.crop_spins:
+            spin.valueChanged.connect(self._crop_changed)
+        self.crop_full.clicked.connect(self._reset_crop)
+        self.result_preview.selectionChanged.connect(self._set_crop)
 
         # Keyboard shortcuts
         self._setup_shortcuts()
@@ -1281,6 +1462,8 @@ class MainWindow(QMainWindow):
                     "Mouse actions",
                     "",
                     "Mouse wheel       Zoom result preview",
+                    "Crop: drag        Move selection; unlock size to draw/resize",
+                    "Crop: arrow keys  Move selection by one output pixel",
                     "Click curve       Add a control point",
                     "Drag point        Move a control point",
                     "Double-click      Remove a control point",
@@ -1381,7 +1564,10 @@ class MainWindow(QMainWindow):
         self._refresh_preview()
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:  # noqa: N802, N803
-        """Zoom with mouse wheel on the result scroll area."""
+        """Keep fit preview current and zoom with the mouse wheel."""
+        if a0 is self.result_scroll.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
+            if self._preview_fit:
+                QTimer.singleShot(0, self._refresh_preview)
         if a0 is self.result_scroll and a1 is not None and a1.type() == QEvent.Type.Wheel:
             wheel_event = a1  # type: ignore[assignment]
             if self._result is None:
@@ -1413,8 +1599,9 @@ class MainWindow(QMainWindow):
         """Copy current 1-bit result to clipboard as a PNG image."""
         if self._result is None:
             return
-        H, W = self._result.shape
-        buf = (self._result * 255).astype(np.uint8)
+        bits = self._export_bits()
+        H, W = bits.shape
+        buf = (bits * 255).astype(np.uint8)
         qimg = QImage(buf.tobytes(), W, H, W, QImage.Format.Format_Grayscale8)
         pix = QPixmap.fromImage(qimg)
         clip = QApplication.clipboard()
@@ -1499,7 +1686,10 @@ class MainWindow(QMainWindow):
         if result.generation != self._generation:
             return
 
+        old_shape = None if self._result is None else self._result.shape
         self._result = result.bits
+        if old_shape != result.bits.shape:
+            self._reset_crop()
 
         # Cache the fresh L* from a full pipeline pass
         if result.fresh_lightness is not None:
@@ -1521,7 +1711,7 @@ class MainWindow(QMainWindow):
         parts.append(f"·  {result.t_ms:.0f} ms")
         self.status_label.setText("  ".join(parts))
 
-        self._show_result(result.bits)
+        self._refresh_preview()
 
     # ═══════════════════════════════════════════════════════════════════
     #  Slots  (UI event handlers)
@@ -1544,7 +1734,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Cannot open image:\n{exc}")
             return
 
+        self._canvas_anchor = "width"
         self._current_image_path = path
+        self.crop_enabled.setChecked(False)
+        self._result = None
         self._original_pil = img
         self._clear_lightness_cache()
         self._full_recompute = True
@@ -1556,7 +1749,7 @@ class MainWindow(QMainWindow):
         # auto-set resolution
         aspect = img.width / img.height
         target_w = min(img.width, 384)
-        target_h = max(1, int(target_w / aspect))
+        target_h = max(1, round(target_w / aspect * self.par_w.value() / self.par_h.value()))
         self.w_spin.blockSignals(True)
         self.h_spin.blockSignals(True)
         self.w_spin.setValue(target_w)
@@ -1564,6 +1757,7 @@ class MainWindow(QMainWindow):
         self.w_spin.blockSignals(False)
         self.h_spin.blockSignals(False)
 
+        self._sync_canvas("width")
         self._update_original_thumb()
         self._schedule_full()
 
@@ -1587,35 +1781,38 @@ class MainWindow(QMainWindow):
         if path:
             self._load_image(path)
 
+    def _sync_canvas(self, anchor: str) -> None:
+        """Preserve source display aspect: W/H = source_aspect / pixel_aspect."""
+        if self._original_pil is None:
+            return
+        ratio = (self._original_pil.width / self._original_pil.height) * self.par_h.value() / self.par_w.value()
+        if anchor == "height":
+            h = self.h_spin.value()
+            w = max(1, round(h * ratio))
+        else:
+            w = self.w_spin.value()
+            h = max(1, round(w / ratio))
+        # Keep the derived dimension within the widgets' supported range.
+        if w > self.w_spin.maximum():
+            w = self.w_spin.maximum()
+            h = max(1, round(w / ratio))
+        if h > self.h_spin.maximum():
+            h = self.h_spin.maximum()
+            w = max(1, round(h * ratio))
+        for spin, value in ((self.w_spin, w), (self.h_spin, h)):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+
     def _on_res_change(self) -> None:
-        if self.lock_btn.isChecked() and self._original_pil is not None:
-            sender = self.sender()
-            aspect = self._original_pil.width / self._original_pil.height
-            if sender == self.w_spin:
-                new_w = self.w_spin.value()
-                new_h = max(1, int(new_w / aspect))
-                self.h_spin.blockSignals(True)
-                self.h_spin.setValue(new_h)
-                self.h_spin.blockSignals(False)
-            elif sender == self.h_spin:
-                new_h = self.h_spin.value()
-                new_w = max(1, int(new_h * aspect))
-                self.w_spin.blockSignals(True)
-                self.w_spin.setValue(new_w)
-                self.w_spin.blockSignals(False)
+        self._canvas_anchor = "height" if self.sender() is self.h_spin else "width"
+        self._sync_canvas(self._canvas_anchor)
         self._schedule_full()
 
-    def _on_lock_toggle(self, checked: bool) -> None:
-        self.lock_btn.setText("🔗" if checked else "🔓")
-        if checked and self._original_pil is not None:
-            aspect = self._original_pil.width / self._original_pil.height
-            cur_aspect = self.w_spin.value() / max(self.h_spin.value(), 1)
-            if abs(cur_aspect - aspect) > 0.01:
-                new_h = max(1, int(self.w_spin.value() / aspect))
-                self.h_spin.blockSignals(True)
-                self.h_spin.setValue(new_h)
-                self.h_spin.blockSignals(False)
-                self._schedule_full()
+    def _on_par_change(self) -> None:
+        self._sync_canvas(self._canvas_anchor)
+        self._schedule_full()
+        self._refresh_preview()
 
     def _on_algo_change(self) -> None:
         name = self.algo_combo.currentText()
@@ -1662,6 +1859,7 @@ class MainWindow(QMainWindow):
         HiDPI / Retina displays.
         """
         H, W = bits.shape
+        par = self.par_w.value() / self.par_h.value() if self.aspect_preview.currentIndex() == 0 else 1.0
 
         # Build a grayscale QImage (1 byte per pixel: 0 = black, 255 = white)
         buf = (bits * 255).astype(np.uint8)
@@ -1675,11 +1873,11 @@ class MainWindow(QMainWindow):
                 avail_h = max(viewport.height(), 10)
             else:
                 avail_w, avail_h = 300, 300
-            scale = min(avail_w / W, avail_h / H)
+            scale = min(avail_w / (W * par), avail_h / H)
         else:
             scale = self._preview_scale
 
-        logical_w = max(1, int(W * scale))
+        logical_w = max(1, int(W * par * scale))
         logical_h = max(1, int(H * scale))
 
         # Scale pixmap at physical-pixel resolution for crisp HiDPI rendering
@@ -1695,13 +1893,63 @@ class MainWindow(QMainWindow):
         self.result_preview.setPixmap(scaled)
 
         mode_text = "compare" if self.compare_btn.isChecked() else self.curve_editor.curve.mode
-        self.result_info.setText(f"{W}×{H}  ·  {self.algo_combo.currentText()}  ·  {mode_text}")
+        self.result_info.setText(f"Canvas: {W}×{H}  ·  {self.algo_combo.currentText()}  ·  {mode_text}")
+        self._crop_changed()
 
     def _refresh_preview(self) -> None:
         """Re-render the current result (used after resize or zoom change)."""
         if self._result is None:
             return
-        self._show_result(self._result)
+        if self.compare_btn.isChecked():
+            self._on_compare_toggle(True)
+        else:
+            self._show_result(self._result)
+
+    def _set_crop(self, x: int, y: int, w: int, h: int) -> None:
+        for spin, value in zip(self.crop_spins, (x, y, w, h)):
+            spin.blockSignals(True)
+            spin.setRange(0 if spin in self.crop_spins[:2] else 1, 99999)
+            spin.setValue(value)
+            spin.blockSignals(False)
+        self._crop_changed()
+
+    def _reset_crop(self) -> None:
+        if self._result is not None:
+            h, w = self._result.shape
+            self._set_crop(0, 0, w, h)
+
+    def _crop_changed(self) -> None:
+        enabled = self.crop_enabled.isChecked()
+        self.crop_controls.setVisible(enabled)
+        if self._result is None:
+            return
+        ch, cw = self._result.shape
+        x, y, w, h = (spin.value() for spin in self.crop_spins)
+        w, h = min(cw, w), min(ch, h)
+        x, y = min(cw - w, x), min(ch - h, y)
+        for spin, value, maximum in zip(self.crop_spins, (x, y, w, h), (cw - w, ch - h, cw - x, ch - y)):
+            spin.blockSignals(True)
+            spin.setMaximum(maximum)
+            spin.setValue(value)
+            spin.blockSignals(False)
+        preview = self.result_preview
+        preview.canvas_size = (cw, ch)
+        preview.selection = (x, y, w, h)
+        preview.crop_enabled = enabled
+        preview.size_locked = self.crop_lock.isChecked()
+        preview.update()
+        ew, eh = (w, h) if enabled else (cw, ch)
+        self.status_label.setText(
+            f"Canvas: {cw}×{ch} · Export: {ew}×{eh} · Pixel aspect: {self.par_w.value()}:{self.par_h.value()}"
+        )
+
+    def _export_bits(self) -> np.ndarray:
+        """Slice the final dither grid without resampling or recomputing."""
+        assert self._result is not None
+        if not self.crop_enabled.isChecked():
+            return self._result
+        x, y, w, h = self.result_preview.selection
+        return self._result[y : y + h, x : x + w]
 
     def _refresh_histogram(self) -> None:
         """Apply current curve to cached lightness and update histogram."""
@@ -1733,7 +1981,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self._write_png(path, self._result)
+            self._write_png(path, self._export_bits())
         except Exception as exc:
             QMessageBox.critical(self, "Save PNG Failed", f"Could not save PNG to:\n{path}\n\n{exc}")
             self.status_label.setText(f"Failed to save PNG: {path}")
@@ -1749,7 +1997,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self._write_pbm(path, self._result)
+            self._write_pbm(path, self._export_bits())
         except Exception as exc:
             QMessageBox.critical(self, "Save PBM Failed", f"Could not save PBM to:\n{path}\n\n{exc}")
             self.status_label.setText(f"Failed to save PBM: {path}")
