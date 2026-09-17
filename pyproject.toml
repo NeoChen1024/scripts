@@ -6,7 +6,26 @@ authors = [{ name = "Neo_Chen", email = "chenkolei@gmail.com" }]
 dynamic = ["dependencies"]
 
 [project.scripts]
+clip-image-text-similarity = "neoscripts.clip_image_text_similarity:__main__"
+dirshard = "neoscripts.dirshard:main"
+flatten-dir = "neoscripts.flatten_dir:cli"
+hash-dedup = "neoscripts.hash_dedup:cli"
+image-filter = "neoscripts.image_filter:__main__"
+kokoro-tts = "neoscripts.kokoro_tts:__main__"
+llm-chain-translation = "neoscripts.llm_chain_translation:__main__"
+llm-image-captioning = "neoscripts.llm_image_captioning:__main__"
+llm-request = "neoscripts.llm_request:__main__"
+lora-scaler = "neoscripts.lora_scaler:scale_lora"
+pic-aspect-ratio = "neoscripts.pic_aspect_ratio:main"
+pic-dir-dedupe = "neoscripts.pic_dir_dedupe:__main__"
+pic-dir-reduce = "neoscripts.pic_dir_reduce:__main__"
 pic-mono-dither = "neoscripts.pic_mono_dither:cli"
+pic-tags-move = "neoscripts.pic_tags_move:main"
+pmsa003 = "neoscripts.pmsa003:main"
+safetensor-similarity = "neoscripts.safetensor_similarity:__main__"
+safetensor-visualize = "neoscripts.safetensor_visualize:__main__"
+safetensors-ls = "neoscripts.safetensors_ls:__main__"
+sd-merger = "neoscripts.sd_merger:__main__"
 
 [build-system]
 # Minimum requirements for the build system to execute.
