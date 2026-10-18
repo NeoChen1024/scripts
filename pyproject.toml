@@ -9,6 +9,7 @@ dynamic = ["dependencies"]
 clip-image-text-similarity = "neoscripts.clip_image_text_similarity:__main__"
 dirshard = "neoscripts.dirshard:main"
 flatten-dir = "neoscripts.flatten_dir:cli"
+gmc1130 = "neoscripts.gmc1130:main"
 hash-dedup = "neoscripts.hash_dedup:cli"
 image-filter = "neoscripts.image_filter:__main__"
 kokoro-tts = "neoscripts.kokoro_tts:__main__"
