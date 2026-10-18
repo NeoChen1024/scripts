@@ -35,7 +35,8 @@ while getopts "b:p:f:ds:r:o:h" opt; do
 done
 shift $((OPTIND - 1))
 [ -n "$1" ] || usage
-[ -n "$output" ] || output="${1%.*}-small.mkv"
+input="$1"
+[ -n "$output" ] || output="${input%.*}-small.mkv"
 
 params="tune=0:keyint=10s:scd=1:enable-qm=1:enable-variance-boost=1:variance-octile=6:luminance-qp-bias=20:ac-bias=0.5"
 params="$params:film-grain=$film_grain:film-grain-denoise=$film_grain_denoise"
@@ -46,7 +47,7 @@ vf="null"
 
 # Reserve room for Cues up front so the muxer needn't shift the whole file afterwards;
 # ~64 bytes per second covers keyframe and subtitle cue points with plenty of headroom
-duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" | cut -d. -f1)"
+duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$input" | cut -d. -f1)"
 case "$duration" in
 	''|*[!0-9]*) index_space=1048576 ;;
 	*) index_space=$((duration * 64 + 65536)) ;;
@@ -55,19 +56,39 @@ esac
 passlog="$(mktemp -u "${TMPDIR:-/tmp}/av1-2pass.XXXXXX")"
 trap 'rm -f "$passlog"-*.log' EXIT
 
-ffmpeg \
-	-i "$1" \
-	-an -sn \
-	-vf "$vf" -pix_fmt yuv420p10le \
-	-c:v libsvtav1 -preset "$preset" -b:v "$bitrate" -svtav1-params "$params" \
-	-pass 1 -passlogfile "$passlog" \
-	-f null - &&
-ffmpeg \
-	-i "$1" \
-	-c:a libopus -b:a 64k -ac 2 \
-	-vf "$vf" -pix_fmt yuv420p10le \
-	-c:v libsvtav1 -preset "$preset" -b:v "$bitrate" -svtav1-params "$params" \
-	-pass 2 -passlogfile "$passlog" \
-	-c:s srt \
-	-reserve_index_space "$index_space" \
-	"$output"
+# libsvtav1 two-pass support landed in FFmpeg 8.1; older releases silently ignore -pass,
+# which would turn both passes into full one-pass encodes. Git snapshots ("N-...") are assumed new enough.
+ffmpeg_version="$(ffmpeg -version | sed -n '1s/^ffmpeg version n\{0,1\}\([^ ]*\).*/\1/p')"
+case "$ffmpeg_version" in
+	[0-9]*)
+		major="${ffmpeg_version%%.*}"
+		minor="${ffmpeg_version#*.}"; minor="${minor%%[!0-9]*}"
+		[ "$major" -gt 8 ] || { [ "$major" -eq 8 ] && [ "${minor:-0}" -ge 1 ]; } && two_pass=1 ;;
+	*) two_pass=1 ;;
+esac
+
+encode() {
+	ffmpeg \
+		-i "$input" \
+		-c:a libopus -b:a 64k -ac 2 \
+		-vf "$vf" -pix_fmt yuv420p10le \
+		-c:v libsvtav1 -preset "$preset" -b:v "$bitrate" -svtav1-params "$params" \
+		"$@" \
+		-c:s srt \
+		-reserve_index_space "$index_space" \
+		"$output"
+}
+
+if [ -n "$two_pass" ]; then
+	ffmpeg \
+		-i "$input" \
+		-an -sn \
+		-vf "$vf" -pix_fmt yuv420p10le \
+		-c:v libsvtav1 -preset "$preset" -b:v "$bitrate" -svtav1-params "$params" \
+		-pass 1 -passlogfile "$passlog" \
+		-f null - &&
+	encode -pass 2 -passlogfile "$passlog"
+else
+	echo "$0: FFmpeg $ffmpeg_version lacks libsvtav1 two-pass support (needs 8.1+), falling back to one-pass VBR" >&2
+	encode
+fi
